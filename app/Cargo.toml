@@ -21,8 +21,8 @@ tracing-subscriber.workspace=true
 
 
 
-# espionox = "0.1.33"
-espionox = {path= "../../espionox"}
+espionox = "0.1.34"
+# espionox = {path= "../../espionox"}
 tokio = { version = "1.28.2", features = ["full"] }
 dotenv = "0.15.0"
 crossbeam-channel = "0.5.11"
