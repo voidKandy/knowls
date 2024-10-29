@@ -43,7 +43,7 @@ pub struct LspState {
 
 impl LspState {
     #[tracing::instrument(name = "initializing state")]
-    fn new(mut config: Config) -> anyhow::Result<Self> {
+    pub fn new(mut config: Config) -> anyhow::Result<Self> {
         let database = Database::new(&config);
         // if let Some(db) = database.as_mut() {
         //     db.init_handle().await?;

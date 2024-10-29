@@ -1,8 +1,12 @@
-use espx_app::config::{
-    agents::{AgentConfig, AgentSettings},
-    database::{DatabaseConfig, DFLT_PORT},
-    espx::{ModelConfig, ModelProvider},
-    Config, ConfigFromFile,
+use espx_app::{
+    agents::AgentID,
+    config::{
+        agents::{AgentConfig, AgentSettings},
+        database::{DatabaseConfig, DFLT_PORT},
+        espx::{ModelConfig, ModelProvider},
+        Config, ConfigFromFile,
+    },
+    state::LspState,
 };
 use std::{collections::HashMap, path::PathBuf};
 use tracing::warn;
@@ -31,6 +35,8 @@ pub fn test_config(database: bool) -> anyhow::Result<Config> {
             {database_str}
 
             [agents]
+             [agents.global]
+                sys_prompt = "you are batman"
              [agents.c]
              [agents.b]
                  sys_prompt = "prompt"
@@ -60,6 +66,13 @@ fn config_builds_correctly() {
             sys_prompt: "prompt".to_string(),
         },
     );
+
+    agents.insert(
+        AgentID::Global,
+        AgentSettings {
+            sys_prompt: "you are batman".to_string(),
+        },
+    );
     let expected = Config {
         pwd: pwd(),
         model: Some(ModelConfig {
@@ -83,4 +96,14 @@ fn config_builds_correctly() {
     });
 
     assert_eq!(expected, cfg);
+
+    let state = LspState::new(cfg).unwrap();
+    let global_agent = state
+        .agents
+        .as_ref()
+        .unwrap()
+        .get_agent_ref(AgentID::Global)
+        .unwrap();
+    let global_agent_sys_prompt_content = global_agent.cache.ref_system_prompt_content().unwrap();
+    assert_eq!(global_agent_sys_prompt_content, "you are batman");
 }
