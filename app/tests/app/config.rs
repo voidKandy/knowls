@@ -1,7 +1,7 @@
 use espx_app::config::{
-    database::DatabaseConfig,
+    agents::{AgentConfig, AgentSettings},
+    database::{DatabaseConfig, DFLT_PORT},
     espx::{ModelConfig, ModelProvider},
-    scopes::ScopeSettings,
     Config, ConfigFromFile,
 };
 use std::{collections::HashMap, path::PathBuf};
@@ -30,10 +30,10 @@ pub fn test_config(database: bool) -> anyhow::Result<Config> {
 
             {database_str}
 
-            [scopes]
-             [scopes.c]
-             [scopes.b]
-             sys_prompt = "prompt"
+            [agents]
+             [agents.c]
+             [agents.b]
+                 sys_prompt = "prompt"
 
         "#
     );
@@ -52,11 +52,11 @@ fn pwd() -> PathBuf {
 
 #[test]
 fn config_builds_correctly() {
-    let mut scopes = HashMap::new();
-    scopes.insert('c', ScopeSettings::default());
-    scopes.insert(
-        'b',
-        ScopeSettings {
+    let mut agents: AgentConfig = HashMap::new();
+    agents.insert('c'.into(), AgentSettings::default());
+    agents.insert(
+        'b'.into(),
+        AgentSettings {
             sys_prompt: "prompt".to_string(),
         },
     );
@@ -66,13 +66,13 @@ fn config_builds_correctly() {
             provider: ModelProvider::Anthropic,
             api_key: "invalid".to_owned(),
         }),
-        scopes: Some(scopes),
+        agents: Some(agents),
         database: Some(DatabaseConfig {
             namespace: "espx".to_owned(),
             database: "espx".to_owned(),
             user: "root".to_owned(),
             pass: "root".to_owned(),
-            port: "18181".to_owned(),
+            port: DFLT_PORT.to_owned(),
         }),
     };
 

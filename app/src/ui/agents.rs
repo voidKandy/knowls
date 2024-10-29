@@ -1,93 +1,34 @@
 use crate::{
-    agents::{doc_control_role, error::AgentsResult, Agents},
+    agents::{doc_control_role, AgentID, Agents},
     state::SharedState,
 };
-use anyhow::anyhow;
 use eframe::egui;
 use egui::{Color32, ScrollArea, SelectableLabel, TextEdit, Ui};
 use espionox::prelude::*;
 use lsp_types::Uri;
-use std::{collections::HashSet, hash::Hash, str::FromStr};
+use std::collections::HashSet;
 use tracing::warn;
 
 use super::AppSectionState;
 
 #[derive(Debug)]
 pub struct EditingAgent {
-    id: UiAgentID,
+    id: AgentID,
     system_prompt: String,
     all_other_messages: MessageStack,
     completion_model: CompletionModel,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-enum UiAgentID {
-    Global,
-    Uri(String),
-    Char(String),
-}
-
 #[derive(Debug)]
 pub struct AgentsSectionState {
-    all_names: HashSet<UiAgentID>,
-    should_switch_to_agent: Option<UiAgentID>,
+    all_names: HashSet<AgentID>,
+    should_switch_to_agent: Option<AgentID>,
     editing_agent: Option<EditingAgent>,
     try_update_agent: bool,
 }
 
-const GLOBAL_AGENT_NAME: &str = "Global";
-
-impl UiAgentID {
-    fn ui_display(&self) -> String {
-        match self {
-            Self::Global => GLOBAL_AGENT_NAME.to_string(),
-            Self::Uri(uri) => {
-                let split = uri
-                    .rsplitn(3, std::path::MAIN_SEPARATOR)
-                    .collect::<Vec<&str>>();
-                format!("{}{}{}", split[1], std::path::MAIN_SEPARATOR, split[0])
-            }
-            Self::Char(ch) => {
-                format!("Custom Agent({ch})")
-            }
-        }
-    }
-}
-
-impl TryInto<Uri> for UiAgentID {
-    type Error = anyhow::Error;
-    fn try_into(self) -> Result<Uri, Self::Error> {
-        if let Self::Uri(uri_str) = self {
-            return Ok(Uri::from_str(&uri_str).expect("could not create URI"));
-        }
-        Err(anyhow!("Incorrect variant"))
-    }
-}
-
-impl TryInto<char> for UiAgentID {
-    type Error = anyhow::Error;
-    fn try_into(self) -> Result<char, Self::Error> {
-        if let Self::Char(char_str) = self {
-            return Ok(char_str.chars().nth(0).unwrap());
-        }
-        Err(anyhow!("Incorrect variant"))
-    }
-}
-
-impl Into<UiAgentID> for char {
-    fn into(self) -> UiAgentID {
-        UiAgentID::Char(self.to_string())
-    }
-}
-
-impl Into<UiAgentID> for Uri {
-    fn into(self) -> UiAgentID {
-        UiAgentID::Uri(self.to_string())
-    }
-}
-
 impl EditingAgent {
-    fn from_agent_and_id(agent: &Agent, id: impl Into<UiAgentID>) -> Self {
+    fn from_agent_and_id(agent: &Agent, id: impl Into<AgentID>) -> Self {
         let system_prompt = agent
             .cache
             .ref_system_prompt_content()
@@ -108,22 +49,6 @@ impl EditingAgent {
         }
     }
 
-    fn mut_agent_ref<'agents>(
-        &self,
-        agents: &'agents mut Agents,
-    ) -> AgentsResult<&'agents mut Agent> {
-        match &self.id {
-            UiAgentID::Uri(uri_str) => {
-                let uri = Uri::from_str(&uri_str).expect("could not get uri from uri str");
-                agents.doc_agent_mut(&uri)
-            }
-            UiAgentID::Char(char) => {
-                let char = char.chars().nth(0).expect("empty char str");
-                agents.custom_agent_mut(char)
-            }
-            UiAgentID::Global => Ok(agents.global_agent_mut()),
-        }
-    }
     /// Assumes self is more up to date than agent, if they are out of sync, updates agent to the
     /// state of self
     fn try_sync_with_agent(&self, agent: &mut Agent) {
@@ -142,56 +67,62 @@ impl Default for AgentsSectionState {
     fn default() -> Self {
         Self {
             all_names: HashSet::new(),
-            should_switch_to_agent: Some(UiAgentID::Global),
+            should_switch_to_agent: Some(AgentID::Global),
             editing_agent: None,
             try_update_agent: false,
         }
     }
 }
 
-fn get_all_names(agents: &Agents) -> HashSet<UiAgentID> {
+fn get_all_names(agents: &Agents) -> HashSet<AgentID> {
     let mut all_names = HashSet::new();
-    all_names.insert(UiAgentID::Global);
+    all_names.insert(AgentID::Global);
 
     for id in all_custom_names(agents) {
-        all_names.insert(id);
+        all_names.insert(id.clone());
     }
 
     for id in all_doc_names(agents) {
-        all_names.insert(id);
+        all_names.insert(id.clone());
     }
 
     all_names
 }
 
-fn all_custom_names(agents: &Agents) -> Vec<UiAgentID> {
+fn all_custom_names(agents: &Agents) -> Vec<&AgentID> {
     agents
-        .custom_agents_iter()
-        .map(|(n, _)| (*n).into())
-        .collect::<Vec<UiAgentID>>()
+        .iter_agents()
+        .filter_map(|(id, _)| {
+            if let AgentID::Char(_) = id {
+                Some(id)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<&AgentID>>()
 }
-fn all_doc_names(agents: &Agents) -> Vec<UiAgentID> {
+fn all_doc_names(agents: &Agents) -> Vec<&AgentID> {
     agents
-        .doc_agents_iter()
-        .map(|(n, _)| n.clone().into())
-        .collect::<Vec<UiAgentID>>()
+        .iter_agents()
+        .filter_map(|(id, _)| {
+            if let AgentID::Uri(_) = id {
+                Some(id)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<&AgentID>>()
 }
 
 impl AgentsSectionState {
     pub fn update(&mut self, agents: &mut Agents) {
         let get_global = |a: &mut Agents| -> EditingAgent {
-            EditingAgent::from_agent_and_id(a.global_agent_ref(), UiAgentID::Global)
+            let id = AgentID::Global;
+            EditingAgent::from_agent_and_id(
+                a.get_agent_ref(id.clone()).expect("No global agent?"),
+                id,
+            )
         };
-
-        // if self.try_update_agent {
-        //     if let Some(editing_agent) = self.editing_agent.as_ref() {
-        //         if let Ok(agent) = editing_agent.mut_agent_ref(agents) {
-        //             warn!("trying to update agent {agent:#?}");
-        //             editing_agent.try_sync_with_agent(agent);
-        //             self.try_update_agent = false;
-        //         }
-        //     }
-        // }
 
         let all_names = get_all_names(agents);
         if all_names != self.all_names {
@@ -201,20 +132,18 @@ impl AgentsSectionState {
 
         if let Some(switch_to_agent) = self.should_switch_to_agent.take() {
             self.editing_agent = match switch_to_agent {
-                UiAgentID::Global => Some(get_global(agents)),
-                UiAgentID::Char(_) => {
+                AgentID::Global => Some(get_global(agents)),
+                AgentID::Char(_) => {
                     let char: char = switch_to_agent.try_into().expect("failed to get char");
                     agents
-                        .custom_agent_ref(char)
-                        .ok()
+                        .get_agent_ref(char)
                         .and_then(|ag| Some(EditingAgent::from_agent_and_id(ag, char)))
                 }
-                UiAgentID::Uri(_) => {
+                AgentID::Uri(_) => {
                     let uri: Uri = switch_to_agent.try_into().expect("failed to get uri");
                     agents
-                        .doc_agent_ref(&uri)
-                        .ok()
-                        .and_then(|ag| Some(EditingAgent::from_agent_and_id(ag, uri)))
+                        .get_agent_ref(&uri)
+                        .and_then(|ag| Some(EditingAgent::from_agent_and_id(ag, &uri)))
                 }
             };
 
@@ -224,7 +153,7 @@ impl AgentsSectionState {
         }
     }
 
-    fn current_agent_id(&self) -> Option<&UiAgentID> {
+    fn current_agent_id(&self) -> Option<&AgentID> {
         Some(&self.editing_agent.as_ref()?.id)
     }
 }
@@ -237,12 +166,12 @@ impl AppSectionState for AgentsSectionState {
                 self.update(agents);
 
                 let selectable_labels =
-                    |current_name: &UiAgentID| -> Vec<(SelectableLabel, &UiAgentID)> {
+                    |current_name: &AgentID| -> Vec<(SelectableLabel, &AgentID)> {
                         self.all_names
                             .iter()
                             .map(|n| {
                                 (
-                                    egui::SelectableLabel::new(current_name == n, n.ui_display()),
+                                    egui::SelectableLabel::new(current_name == n, format!("{n}")),
                                     n,
                                 )
                             })
@@ -273,7 +202,7 @@ impl AppSectionState for AgentsSectionState {
 
                             if self.try_update_agent {
                                 if ui.button("Save").clicked() {
-                                    if let Ok(agent) = editing.mut_agent_ref(agents) {
+                                    if let Some(agent) = agents.get_agent_mut(&editing.id) {
                                         warn!("trying to update agent {agent:#?}");
                                         editing.try_sync_with_agent(agent);
                                         self.try_update_agent = false;

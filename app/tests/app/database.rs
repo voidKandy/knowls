@@ -5,7 +5,7 @@ use crate::{
 use espionox::prelude::{Message, MessageStack};
 use espx_app::{
     database::models::{
-        agent_memories::{AgentID, DBAgentMemory, DBAgentMemoryParams},
+        agent_memories::{DBAgentID, DBAgentMemory, DBAgentMemoryParams},
         block::{block_params_from, DBBlock, DBBlockParams},
         DatabaseStruct, FieldQuery, QueryBuilder,
     },
@@ -282,10 +282,7 @@ async fn memories_crud_test() {
     let mut all_params = vec![];
 
     all_params.push(DBAgentMemoryParams::new(&agent_char_1, Some(&test_mems_1)));
-    all_params.push(DBAgentMemoryParams::new(
-        agent_uri_2.clone(),
-        Some(&test_mems_2),
-    ));
+    all_params.push(DBAgentMemoryParams::new(&agent_uri_2, Some(&test_mems_2)));
 
     let mut q = QueryBuilder::begin();
 
@@ -303,7 +300,7 @@ async fn memories_crud_test() {
         .client
         .select((
             DBAgentMemory::db_id(),
-            AgentID::from(agent_uri_2).to_string(),
+            DBAgentID::from(&agent_uri_2).to_string(),
         ))
         .await
         .unwrap()

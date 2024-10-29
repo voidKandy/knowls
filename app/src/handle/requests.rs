@@ -3,8 +3,7 @@ use super::{
     error::{HandleError, HandleResult},
 };
 use crate::{
-    agents::{message_stack_into_marked_string, Agents},
-    embeddings,
+    agents::{message_stack_into_marked_string, AgentID, Agents},
     handle::BufferOpChannelJoinHandle,
     interact::id::{human_readable_int, DOCUMENT_ID, GLOBAL_ID, PROMPT_ID, PUSH_ID, RAG_PUSH_ID},
     state::SharedState,
@@ -107,11 +106,14 @@ pub async fn handle_goto_definition(
     sender.send_operation(message.into()).await?;
 
     let agent = match w.agents.as_mut() {
-        Some(agents) => match scope {
-            _ if scope == GLOBAL_ID => agents.global_agent_mut(),
-            _ if scope == DOCUMENT_ID => agents.doc_agent_mut(&uri).expect("No doc agent loaded?"),
-            _ => unreachable!(),
-        },
+        Some(agents) => {
+            let id = match scope {
+                _ if scope == GLOBAL_ID => AgentID::Global,
+                _ if scope == DOCUMENT_ID => AgentID::from(&uri),
+                _ => unreachable!(),
+            };
+            agents.get_agent_mut(id).expect("Could not get agent")
+        }
         None => {
             warn!("no agents");
             return Ok(());
@@ -247,11 +249,14 @@ pub async fn handle_hover(
         if let Some(integer) = comment.try_get_interact_integer().ok() {
             let (_command, scope) = r.registry.interract_tuple(integer)?;
             let agent = match r.agents.as_ref() {
-                Some(agents) => match scope {
-                    GLOBAL_ID => agents.global_agent_ref(),
-                    DOCUMENT_ID => agents.doc_agent_ref(&uri).expect("No doc agent loaded?"),
-                    _ => unreachable!(),
-                },
+                Some(agents) => {
+                    let id = match scope {
+                        _ if scope == GLOBAL_ID => AgentID::Global,
+                        _ if scope == DOCUMENT_ID => AgentID::from(&uri),
+                        _ => unreachable!(),
+                    };
+                    agents.get_agent_ref(id).expect("Could not get agent")
+                }
                 None => {
                     warn!("no agents");
                     return Ok(());

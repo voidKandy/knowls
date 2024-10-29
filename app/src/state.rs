@@ -1,5 +1,5 @@
 use crate::{
-    agents::Agents,
+    agents::{AgentID, Agents},
     config::Config,
     database::{
         error::DatabaseError,
@@ -50,11 +50,24 @@ impl LspState {
         // }
         let mut agents = config.model.take().and_then(|cfg| Some(Agents::from(cfg)));
         let mut registry = InteractRegistry::default();
-        if let Some(ref scopes_config) = &config.scopes {
-            for (char, scope_settings) in scopes_config.clone().into_iter() {
-                registry.register_scope(&char)?;
-                if let Some(agents) = agents.as_mut() {
-                    agents.create_custom_agent(char, scope_settings.sys_prompt);
+        if let Some(ref agents_config) = &config.agents {
+            for (agent_id, agent_settings) in agents_config.clone().into_iter() {
+                match agent_id {
+                    AgentID::Uri(uri_str) => {
+                        warn!("Did not expect to encounter a uri agent here, encountered: {uri_str:#?}")
+                    }
+                    AgentID::Global => {
+                        if let Some(agents) = agents.as_mut() {
+                            let global_agent = agents.get_agent_mut(agent_id).expect("No global?");
+                            agent_settings.change_agent(global_agent);
+                        }
+                    }
+                    AgentID::Char(char) => {
+                        registry.register_scope(&char)?;
+                        if let Some(agents) = agents.as_mut() {
+                            agents.create_custom_agent(char, agent_settings.sys_prompt);
+                        }
+                    }
                 }
             }
         }
@@ -81,7 +94,10 @@ impl LspState {
     pub async fn save_agent_memories_to_database(&self) -> StateResult<()> {
         let mut all_agent_params = vec![];
         if let Some(agents) = &self.agents {
-            let global_cache = &agents.global_agent_ref().cache;
+            let global_cache = &agents
+                .get_agent_ref(AgentID::Global)
+                .expect("No global agent?")
+                .cache;
             let global_char = self
                 .registry
                 .get_interact_char(GLOBAL_ID)
@@ -92,14 +108,9 @@ impl LspState {
                 Some(&global_cache),
             ));
 
-            for (custom_char, custom_agent) in agents.custom_agents_iter() {
-                let cache = &custom_agent.cache;
-                all_agent_params.push(DBAgentMemoryParams::new(custom_char, Some(&cache)));
-            }
-
-            for (doc_uri, doc_agent) in agents.doc_agents_iter() {
-                let cache = &doc_agent.cache;
-                all_agent_params.push(DBAgentMemoryParams::new(doc_uri.to_owned(), Some(&cache)));
+            for (id, agent) in agents.iter_agents() {
+                let cache = &agent.cache;
+                all_agent_params.push(DBAgentMemoryParams::new(id, Some(&cache)));
             }
         }
 
@@ -170,9 +181,15 @@ impl LspState {
                 "registry does not have char for id: {integer} with mask: {SCOPE_MASK}"
             ))?;
         match char {
-            _ if char == &DOCUMENT_CHARACTER => Ok(agents.doc_agent_mut(current_document_uri)?),
-            _ if char == &GLOBAL_CHARACTER => Ok(agents.global_agent_mut()),
-            custom_character => Ok(agents.custom_agent_mut(*custom_character.as_ref())?),
+            _ if char == &DOCUMENT_CHARACTER => Ok(agents
+                .get_agent_mut(current_document_uri)
+                .ok_or(StateError::AgentsNotPresent)?),
+            _ if char == &GLOBAL_CHARACTER => Ok(agents
+                .get_agent_mut(AgentID::Global)
+                .ok_or(StateError::AgentsNotPresent)?),
+            custom_character => Ok(agents
+                .get_agent_mut(*custom_character.as_ref())
+                .ok_or(StateError::AgentsNotPresent)?),
         }
     }
 

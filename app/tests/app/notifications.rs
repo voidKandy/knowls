@@ -2,7 +2,7 @@ use crate::{
     helpers::{handler_tests_state, test_buff_op_channel, TEST_TRACING},
     test_docs::test_doc_1,
 };
-use espx_app::handle::notifications::handle_didSave;
+use espx_app::{agents::AgentID, handle::notifications::handle_didSave};
 use lsp_types::{DidSaveTextDocumentParams, TextDocumentIdentifier, Uri};
 use serde::Serialize;
 use std::sync::LazyLock;
@@ -31,7 +31,14 @@ async fn handles_didsave_correctly() {
 
     let r = state.get_read().unwrap();
 
-    let agent_cache_before = r.agents.as_ref().unwrap().global_agent_ref().cache.clone();
+    let agent_cache_before = r
+        .agents
+        .as_ref()
+        .unwrap()
+        .get_agent_ref(AgentID::Global)
+        .unwrap()
+        .cache
+        .clone();
     drop(r);
 
     let buffer_op_channel = test_buff_op_channel();
@@ -44,7 +51,14 @@ async fn handles_didsave_correctly() {
         .unwrap();
 
     let r = state.get_read().unwrap();
-    let agent_cache_len_after = r.agents.as_ref().unwrap().global_agent_ref().cache.len();
+    let agent_cache_len_after = r
+        .agents
+        .as_ref()
+        .unwrap()
+        .get_agent_ref(AgentID::Global)
+        .unwrap()
+        .cache
+        .len();
     drop(r);
 
     assert_eq!(agent_cache_before.len() + 1, agent_cache_len_after);
@@ -60,7 +74,14 @@ async fn handles_didsave_correctly() {
     let r = state.get_read().unwrap();
 
     warn!("agent cache before: {agent_cache_before:#?}",);
-    let agent_cache_after = r.agents.as_ref().unwrap().global_agent_ref().cache.clone();
+    let agent_cache_after = r
+        .agents
+        .as_ref()
+        .unwrap()
+        .get_agent_ref(AgentID::Global)
+        .unwrap()
+        .cache
+        .clone();
     warn!("agent cache after: {agent_cache_after:#?}",);
     assert_eq!(agent_cache_after.len(), agent_cache_before.len());
 }

@@ -10,12 +10,11 @@ pub struct DatabaseConfig {
     pub port: String,
 }
 
-const DFLT_NAMESPACE: &str = "namespace";
-const DFLT_DATABASE: &str = "database";
-const DFLT_USER: &str = "user";
-const DFLT_PASS: &str = "pass";
-const DFLT_PORT: &str = "19917";
-
+pub const DFLT_NAMESPACE: &str = "namespace";
+pub const DFLT_DATABASE: &str = "database";
+pub const DFLT_USER: &str = "user";
+pub const DFLT_PASS: &str = "pass";
+pub const DFLT_PORT: &str = "19917";
 impl Default for DatabaseConfig {
     fn default() -> Self {
         Self {

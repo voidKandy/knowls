@@ -1,9 +1,9 @@
+pub mod agents;
 pub mod database;
 pub mod espx;
-pub mod scopes;
+use agents::{AgentConfig, AgentConfigFromFile, AgentSettings};
 use database::{DatabaseConfig, DatabaseConfigFromFile};
 use espx::ModelConfig;
-use scopes::{ScopeConfig, ScopeConfigFromFile, ScopeSettings};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -11,33 +11,43 @@ use std::{
     path::{Path, PathBuf},
 };
 use toml;
-use tracing::debug;
+use tracing::{debug, warn};
+
+use crate::agents::{AgentID, GLOBAL_AGENT_NAME};
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Config {
     pub pwd: PathBuf,
     pub model: Option<ModelConfig>,
     pub database: Option<DatabaseConfig>,
-    pub scopes: Option<ScopeConfig>,
+    pub agents: Option<AgentConfig>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ConfigFromFile {
     model: Option<ModelConfig>,
     database: Option<DatabaseConfigFromFile>,
-    scopes: Option<ScopeConfigFromFile>,
+    agents: Option<AgentConfigFromFile>,
 }
 
 impl From<(ConfigFromFile, PathBuf)> for Config {
     fn from((cfg, pwd): (ConfigFromFile, PathBuf)) -> Self {
-        let scopes: Option<HashMap<char, ScopeSettings>> = {
-            if cfg.scopes.is_none() || cfg.scopes.as_ref().is_some_and(|hm| hm.is_empty()) {
+        let agents: Option<HashMap<AgentID, AgentSettings>> = {
+            if cfg.agents.is_none() || cfg.agents.as_ref().is_some_and(|hm| hm.is_empty()) {
                 None
             } else {
                 let mut map = HashMap::new();
 
-                for (char, settings) in cfg.scopes.unwrap() {
-                    map.insert(char, settings.into());
+                for (str, settings) in cfg.agents.unwrap() {
+                    if str.chars().count() > 1 {
+                        if str.to_lowercase() == GLOBAL_AGENT_NAME.to_lowercase() {
+                            map.insert(AgentID::Global, settings.into());
+                        } else {
+                            warn!("Encountered a non global agent name: {str}")
+                        }
+                    } else {
+                        map.insert(AgentID::from(str.chars().next().unwrap()), settings.into());
+                    }
                 }
                 Some(map)
             }
@@ -47,7 +57,7 @@ impl From<(ConfigFromFile, PathBuf)> for Config {
             pwd,
             model: cfg.model,
             database: cfg.database.and_then(|db| Some(db.into())),
-            scopes,
+            agents,
         }
     }
 }

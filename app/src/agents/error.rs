@@ -2,14 +2,18 @@ use crate::error::error_chain_fmt;
 use lsp_types::Uri;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 
+use super::AgentID;
+
 pub type AgentsResult<T> = Result<T, AgentsError>;
 
 #[derive(thiserror::Error)]
 pub enum AgentsError {
     #[error(transparent)]
     Undefined(#[from] anyhow::Error),
-    DocAgentNotPresent(Uri),
-    CustomAgentNotPresent(char),
+    IncorrectAgentIDVariant(AgentID),
+    AgentNotPresent(AgentID),
+    // DocAgentNotPresent(Uri),
+    // CustomAgentNotPresent(char),
 }
 
 impl Debug for AgentsError {
@@ -22,11 +26,11 @@ impl Display for AgentsError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let display = match self {
             Self::Undefined(err) => err.to_string(),
-            Self::DocAgentNotPresent(uri) => {
-                format!("No agent present for document: {}", uri.to_string())
+            Self::IncorrectAgentIDVariant(id) => {
+                format!("Incorrect Agent ID variant, got: {id:#?}")
             }
-            Self::CustomAgentNotPresent(char) => {
-                format!("No agent present for character: {char}")
+            Self::AgentNotPresent(id) => {
+                format!("No agent present for document: {id:#?}")
             }
         };
         write!(f, "{}", display)

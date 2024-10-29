@@ -1,5 +1,9 @@
 use super::{DatabaseStruct, IntoOneOf};
-use crate::{database::error::DatabaseError, util::OneOf};
+use crate::{
+    agents::{AgentID, GLOBAL_AGENT_NAME},
+    database::error::DatabaseError,
+    util::OneOf,
+};
 use anyhow::anyhow;
 use base64::{prelude::BASE64_URL_SAFE_NO_PAD, Engine};
 use espionox::{
@@ -17,13 +21,14 @@ pub struct DBAgentMemory {
     pub messages: MessageStack,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum AgentID {
-    EncodedUri(String),
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum DBAgentID {
+    Global,
     Char(char),
+    EncodedUri(String),
 }
 
-impl TryFrom<Thing> for AgentID {
+impl TryFrom<Thing> for DBAgentID {
     type Error = anyhow::Error;
     fn try_from(value: Thing) -> Result<Self, Self::Error> {
         match value.id {
@@ -40,29 +45,43 @@ impl TryFrom<Thing> for AgentID {
     }
 }
 
-impl From<&char> for AgentID {
+impl From<&char> for DBAgentID {
     fn from(value: &char) -> Self {
         Self::Char(value.to_owned())
     }
 }
 
-impl From<Uri> for AgentID {
-    fn from(value: Uri) -> Self {
+impl From<&Uri> for DBAgentID {
+    fn from(value: &Uri) -> Self {
         let encoded = BASE64_URL_SAFE_NO_PAD.encode(value.as_str());
         Self::EncodedUri(encoded)
     }
 }
 
-impl ToString for AgentID {
+impl From<&AgentID> for DBAgentID {
+    fn from(value: &AgentID) -> Self {
+        match value {
+            AgentID::Global => Self::Global,
+            AgentID::Uri(uri_str) => {
+                let encoded = BASE64_URL_SAFE_NO_PAD.encode(uri_str.as_str());
+                Self::EncodedUri(encoded)
+            }
+            AgentID::Char(char) => Self::Char(*char),
+        }
+    }
+}
+
+impl ToString for DBAgentID {
     fn to_string(&self) -> String {
         match self {
+            Self::Global => GLOBAL_AGENT_NAME.to_string(),
             Self::EncodedUri(uri) => uri.to_string(),
             Self::Char(char) => char.to_string(),
         }
     }
 }
 
-impl AgentID {
+impl DBAgentID {
     fn decode_uri(&self) -> anyhow::Result<Option<Uri>> {
         if let Self::EncodedUri(encoded) = self {
             let uri_str = BASE64_URL_SAFE_NO_PAD
@@ -79,13 +98,13 @@ impl AgentID {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DBAgentMemoryParams<'stack> {
-    id: AgentID,
+    id: DBAgentID,
     messages: Option<MessageStackRef<'stack>>,
 }
 
 impl<'stack> DBAgentMemoryParams<'stack> {
-    pub fn new(into_id: impl Into<AgentID>, messages: Option<&'stack MessageStack>) -> Self {
-        let id = Into::<AgentID>::into(into_id);
+    pub fn new(into_id: impl Into<DBAgentID>, messages: Option<&'stack MessageStack>) -> Self {
+        let id = Into::<DBAgentID>::into(into_id);
         let messages = messages.and_then(|mstack| {
             let vec = mstack.as_ref().iter().collect::<Vec<&Message>>();
             Some(MessageStackRef::from(vec))
