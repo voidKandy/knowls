@@ -1,138 +1,85 @@
-mod agents;
-pub mod config;
-pub mod database;
-pub mod embeddings;
-mod error;
-pub mod handle;
-pub mod interact;
-pub mod state;
-pub mod util;
-use crate::handle::buffer_operations::BufferOpChannelStatus;
-use anyhow::Result;
-use config::Config;
-use lsp_server::{Connection, Message, Notification};
 use lsp_types::{
-    CodeActionProviderCapability, DiagnosticServerCapabilities, InitializeParams, MessageType,
-    ProgressParams, ProgressToken, ServerCapabilities, ShowMessageParams,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
-    TextDocumentSyncSaveOptions, WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressEnd,
-    WorkDoneProgressOptions, WorkDoneProgressReport,
+    CodeActionProviderCapability, DiagnosticServerCapabilities, InitializeParams, ProgressParams,
+    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    TextDocumentSyncSaveOptions, WorkDoneProgressOptions,
 };
-use state::SharedState;
-use tracing::{debug, info, warn};
+use std::{path::Path, time::Duration};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    net::{UnixListener, UnixStream},
+};
+use tracing::warn;
 
 async fn main_loop(
-    mut connection: Connection,
+    mut tui_connection: UnixStream,
+    unix_listener: UnixListener,
+    lsp_connection: lsp_server::Connection,
     params: serde_json::Value,
-    mut state: SharedState,
-    // config: Config,
-) -> Result<()> {
+) -> anyhow::Result<()> {
     let _params: InitializeParams = serde_json::from_value(params).unwrap();
-    connection.sender.send(Message::Notification(Notification {
-        method: "window/workDoneProgress/create".to_string(),
-        params: serde_json::to_value(ProgressParams {
-            token: ProgressToken::String("Initializing".to_owned()),
-            value: lsp_types::ProgressParamsValue::WorkDone(WorkDoneProgress::Begin(
-                WorkDoneProgressBegin {
-                    title: "Initializing".to_owned(),
-                    ..Default::default()
-                },
-            )),
-        })?,
-    }))?;
+    let (recv, sender) = (lsp_connection.receiver, lsp_connection.sender);
 
-    let mut w = state.get_write().expect("failed to get write");
-    let model_message = match &w.agents {
-        Some(agents) => format!("Model Config Loaded For: {:?}", agents.config.provider),
-        None => "No model in your config file, AI will be unusable.".to_owned(),
-    };
-
-    connection.sender.send(Message::Notification(Notification {
-        method: "$/progress".to_string(),
-        params: serde_json::to_value(ProgressParams {
-            token: ProgressToken::String("Initializing".to_owned()),
-            value: lsp_types::ProgressParamsValue::WorkDone(WorkDoneProgress::Report(
-                WorkDoneProgressReport {
-                    message: Some(model_message),
-                    percentage: Some(50),
-                    ..Default::default()
-                },
-            )),
-        })?,
-    }))?;
-
-    let database_message = {
-        match &w.database {
-            Some(db) => {
-                format!(
-                    "Database {}\nNamespace: {}",
-                    db.config.database, db.config.namespace
-                )
-            }
-            None => "Did not connect to a database".to_owned(),
-        }
-    };
-
-    drop(w);
-
-    connection.sender.send(Message::Notification(Notification {
-        method: "$/progress".to_string(),
-        params: serde_json::to_value(ProgressParams {
-            token: ProgressToken::String("Initializing".to_owned()),
-            value: lsp_types::ProgressParamsValue::WorkDone(WorkDoneProgress::End(
-                WorkDoneProgressEnd {
-                    // message: None,
-                    message: Some(database_message),
-                },
-            )),
-        })?,
-    }))?;
-
-    for msg in &connection.receiver {
-        match match msg {
-            Message::Notification(not) => {
-                handle::notifications::handle_notification(not, state.clone()).await
-            }
-            Message::Request(req) => handle::requests::handle_request(req, state.clone()).await,
-            _ => handle::handle_other(msg),
-        } {
-            Ok(mut buffer_op_channel_handler) => {
-                while let Some(status) = buffer_op_channel_handler.receiver.recv().await {
-                    match status? {
-                        BufferOpChannelStatus::Finished => break,
-                        BufferOpChannelStatus::Working(buffer_op) => {
-                            connection.sender = buffer_op.do_operation(connection.sender).await?;
+    tokio::spawn(async move {
+        match unix_listener.accept().await {
+            Ok((stream, _addr)) => {
+                warn!("client: {_addr:?}");
+                tokio::spawn(async move {
+                    let mut buf_reader = BufReader::new(stream);
+                    let mut buf = String::new();
+                    loop {
+                        let bytes = buf_reader.read_line(&mut buf).await.unwrap();
+                        if bytes == 0 {
+                            warn!("Closed");
+                            break;
                         }
+
+                        if let Some(msg) = serde_json::from_str::<lsp_server::Message>(&buf).ok() {
+                            warn!("Rcv: {msg:#?}");
+                            sender.send(msg).unwrap();
+                        }
+                        buf.clear();
                     }
-                }
+                });
             }
             Err(err) => {
-                warn!("error in handler: {}", err);
-                connection.sender.send(Message::Notification(Notification {
-                    method: "window/showMessage".to_string(),
-                    params: serde_json::to_value(ShowMessageParams {
-                        typ: MessageType::ERROR,
-                        message: format!("Handler encounted an error: {}", err),
-                    })?,
-                }))?;
+                println!("error connecting {err:#?}")
             }
         }
-        debug!("finished processing message, moving on");
-    }
+    });
+
+    tokio::spawn(async move {
+        for msg in &recv {
+            let json: serde_json::Value = serde_json::to_value(msg).unwrap();
+            if let Some(str) = serde_json::to_string(&json).ok() {
+                let str = &format!("{str}\n");
+                let bytes: &[u8] = str.as_bytes();
+
+                tui_connection.write_all(bytes).await.unwrap();
+                tui_connection.flush().await.unwrap();
+            }
+        }
+    });
 
     Ok(())
 }
 
+const TUI_SOCKET_ADDR: &str = "/tmp/espx_tui_socket.sock";
+const LSP_SOCKET_ADDR: &str = "/tmp/espx_lsp_socket.sock";
 #[tokio::main]
-pub async fn start_lsp() -> Result<()> {
-    info!("starting LSP server");
-    let config = Config::init();
-    let state = SharedState::init(config).await?;
-    info!("State initialized");
+pub async fn start_lsp() -> anyhow::Result<()> {
+    tracing::info!("starting LSP server");
+    let (connection, io_threads) = lsp_server::Connection::stdio();
 
-    // Create the transport. Includes the stdio (stdin and stdout) versions but this could
-    // also be implemented to use sockets or HTTP.
-    let (connection, io_threads) = Connection::stdio();
+    if Path::new(LSP_SOCKET_ADDR).exists() {
+        std::fs::remove_file(LSP_SOCKET_ADDR).unwrap();
+    }
+    let unix_listener = UnixListener::bind(LSP_SOCKET_ADDR).unwrap();
+    warn!("created socket at: {LSP_SOCKET_ADDR}");
+    tokio::time::sleep(Duration::from_millis(2000)).await;
+
+    let mut tui_connection = UnixStream::connect(TUI_SOCKET_ADDR).await?;
+    tui_connection.write_all(b"hello world\n").await.unwrap();
+    tui_connection.flush().await.unwrap();
 
     let text_document_sync = Some(TextDocumentSyncCapability::Options(
         TextDocumentSyncOptions {
@@ -147,6 +94,7 @@ pub async fn start_lsp() -> Result<()> {
             ..Default::default()
         },
     ));
+
     let server_capabilities = serde_json::to_value(ServerCapabilities {
         text_document_sync,
         completion_provider: Some(lsp_types::CompletionOptions {
@@ -169,7 +117,14 @@ pub async fn start_lsp() -> Result<()> {
     .unwrap();
 
     let initialization_params = connection.initialize(server_capabilities)?;
-    main_loop(connection, initialization_params, state).await?;
+    main_loop(
+        tui_connection,
+        unix_listener,
+        connection,
+        initialization_params,
+    )
+    .await?;
     io_threads.join()?;
+    std::fs::remove_file(LSP_SOCKET_ADDR).unwrap();
     Ok(())
 }

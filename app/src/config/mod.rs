@@ -1,0 +1,107 @@
+pub mod agents;
+pub mod database;
+pub mod espx;
+use agents::{AgentConfig, AgentConfigFromFile, AgentSettings};
+use database::{DatabaseConfig, DatabaseConfigFromFile};
+use espx::ModelConfig;
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::HashMap,
+    fs::{self},
+    path::{Path, PathBuf},
+};
+use toml;
+use tracing::{debug, warn};
+
+use crate::agents::{AgentID, GLOBAL_AGENT_NAME};
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct Config {
+    pub pwd: PathBuf,
+    pub model: Option<ModelConfig>,
+    pub database: Option<DatabaseConfig>,
+    pub agents: Option<AgentConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ConfigFromFile {
+    model: Option<ModelConfig>,
+    database: Option<DatabaseConfigFromFile>,
+    agents: Option<AgentConfigFromFile>,
+}
+
+impl From<(ConfigFromFile, PathBuf)> for Config {
+    fn from((cfg, pwd): (ConfigFromFile, PathBuf)) -> Self {
+        let agents: Option<HashMap<AgentID, AgentSettings>> = {
+            if cfg.agents.is_none() || cfg.agents.as_ref().is_some_and(|hm| hm.is_empty()) {
+                None
+            } else {
+                let mut map = HashMap::new();
+
+                for (str, settings) in cfg.agents.unwrap() {
+                    if str.chars().count() > 1 {
+                        if str.to_lowercase() == GLOBAL_AGENT_NAME.to_lowercase() {
+                            map.insert(AgentID::Global, settings.into());
+                        } else {
+                            warn!("Encountered a non global agent name: {str}")
+                        }
+                    } else {
+                        map.insert(AgentID::from(str.chars().next().unwrap()), settings.into());
+                    }
+                }
+                Some(map)
+            }
+        };
+
+        Config {
+            pwd,
+            model: cfg.model,
+            database: cfg.database.and_then(|db| Some(db.into())),
+            agents,
+        }
+    }
+}
+
+impl Config {
+    pub fn init() -> Self {
+        let pwd = std::env::current_dir()
+            .expect("failed to get current dir")
+            .canonicalize()
+            .expect("failed to canonicalize pwd");
+        debug!("pwd: {:?}", pwd);
+        let mut config_file_path = pwd.clone();
+        config_file_path.push(Path::new("espx-ls.toml"));
+
+        let content = fs::read_to_string(config_file_path).unwrap_or(String::new());
+        let cnfg: ConfigFromFile = match toml::from_str(&content) {
+            Ok(c) => c,
+            Err(err) => panic!("CONFIG ERROR: {:?}", err),
+        };
+        Config::from((cnfg, pwd))
+    }
+
+    fn espx_ls_dir(&self) -> PathBuf {
+        let mut path = self.pwd.clone();
+        path.push(PathBuf::from(".espx-ls"));
+        debug!("espx ls folder path: {:?}", path);
+        if !path.exists() {
+            fs::create_dir(&path).expect("failed to make .espx-ls directory");
+        }
+        path
+    }
+
+    pub fn conversation_file(&self) -> PathBuf {
+        let mut path = self.espx_ls_dir();
+        path.push(PathBuf::from("conversation.md"));
+        if !path.exists() {
+            fs::File::create_new(&path).expect("failed to create conversation file");
+        }
+        path
+    }
+
+    pub fn database_directory(&self) -> PathBuf {
+        let mut path = self.espx_ls_dir();
+        path.push(PathBuf::from("db.surql"));
+        path
+    }
+}
