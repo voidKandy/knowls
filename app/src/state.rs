@@ -35,9 +35,9 @@ pub struct SharedState(Arc<RwLock<LspState>>);
 #[derive(Debug)]
 pub struct LspState {
     pub attached: Option<tokio::net::unix::SocketAddr>,
+    pub registry: InteractRegistry,
     pub documents: HashMap<Uri, TokenVec>,
     pub database: Option<Database>,
-    pub registry: InteractRegistry,
     pub agents: Option<Agents>,
 }
 
