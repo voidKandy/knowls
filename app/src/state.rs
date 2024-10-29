@@ -26,7 +26,7 @@ use espionox::{
     prelude::{Message, MessageRole},
 };
 use lsp_types::Uri;
-use std::{collections::HashMap, io::Stdout, net::SocketAddr, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tracing::warn;
 
@@ -43,8 +43,11 @@ pub struct LspState {
 
 impl LspState {
     #[tracing::instrument(name = "initializing state")]
-    async fn new(mut config: Config) -> anyhow::Result<Self> {
-        let database = Database::init(&mut config).await.ok();
+    fn new(mut config: Config) -> anyhow::Result<Self> {
+        let database = Database::new(&config);
+        // if let Some(db) = database.as_mut() {
+        //     db.init_handle().await?;
+        // }
         let mut agents = config.model.take().and_then(|cfg| Some(Agents::from(cfg)));
         let mut registry = InteractRegistry::default();
         if let Some(ref scopes_config) = &config.scopes {
@@ -63,6 +66,16 @@ impl LspState {
             database,
             agents,
         })
+    }
+
+    async fn init_database_thread(&mut self) -> StateResult<()> {
+        if let Some(db) = self.database.as_mut() {
+            warn!("Initializing db thread");
+            db.init_thread().await?;
+        } else {
+            warn!("No database present");
+        }
+        Ok(())
     }
 
     pub async fn save_agent_memories_to_database(&self) -> StateResult<()> {
@@ -101,10 +114,13 @@ impl LspState {
             q.push(&DBAgentMemory::upsert(&param)?)
         }
 
-        db.client
-            .query(q.end())
-            .await
-            .map_err(|err| StateError::from(DatabaseError::from(err)))?;
+        if let Some(thread) = db.thread.as_ref() {
+            thread
+                .client
+                .query(q.end())
+                .await
+                .map_err(|err| StateError::from(DatabaseError::from(err)))?;
+        }
 
         Ok(())
     }
@@ -127,11 +143,13 @@ impl LspState {
             q.push(&DBBlock::upsert(&param)?)
         }
 
-        db.client
-            .query(q.end())
-            .await
-            .map_err(|err| StateError::from(DatabaseError::from(err)))?;
-
+        if let Some(thread) = db.thread.as_ref() {
+            thread
+                .client
+                .query(q.end())
+                .await
+                .map_err(|err| StateError::from(DatabaseError::from(err)))?;
+        }
         Ok(())
     }
 
@@ -250,8 +268,8 @@ impl Clone for SharedState {
 }
 
 impl SharedState {
-    pub async fn init(config: Config) -> anyhow::Result<Self> {
-        Ok(Self(Arc::new(RwLock::new(LspState::new(config).await?))))
+    pub fn init(config: Config) -> anyhow::Result<Self> {
+        Ok(Self(Arc::new(RwLock::new(LspState::new(config)?))))
     }
     pub fn get_read(&self) -> anyhow::Result<RwLockReadGuard<'_, LspState>> {
         match self.0.try_read() {

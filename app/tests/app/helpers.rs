@@ -19,10 +19,8 @@ pub static TEST_TRACING: LazyLock<()> = LazyLock::new(|| {
     info!("test tracing initialized");
 });
 
-pub async fn test_state(database: bool) -> SharedState {
-    SharedState::init(test_config(database).unwrap())
-        .await
-        .unwrap()
+pub fn test_state(database: bool) -> SharedState {
+    SharedState::init(test_config(database).unwrap()).unwrap()
 }
 
 pub fn test_buff_op_channel() -> BufferOpChannelHandler {
@@ -30,7 +28,7 @@ pub fn test_buff_op_channel() -> BufferOpChannelHandler {
 }
 
 pub async fn handler_tests_state() -> SharedState {
-    let mut state = test_state(false).await;
+    let mut state = test_state(false);
     let mut update_state = || {
         let mut w = state.get_write().unwrap();
         let (uri, content) = test_doc_1();

@@ -10,7 +10,7 @@ async fn main() -> eframe::Result<()> {
     LazyLock::force(&espx_app::telemetry::TRACING);
     let config = espx_app::config::Config::init();
     tracing::warn!("initializing with config: {config:#?}");
-    let state = espx_app::state::SharedState::init(config).await.unwrap();
+    let state = espx_app::state::SharedState::init(config).unwrap();
 
     let unix_thread_state = state.clone();
     tokio::spawn(async move {

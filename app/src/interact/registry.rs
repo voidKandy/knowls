@@ -5,7 +5,7 @@ use super::{
 use std::{collections::HashMap, fmt::Debug};
 use tracing::warn;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct InteractRegistry {
     char_lookup: HashMap<InteractID<char>, InteractID<u8>>,
     id_lookup: HashMap<InteractID<u8>, InteractID<char>>,

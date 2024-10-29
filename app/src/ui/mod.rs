@@ -115,22 +115,23 @@ impl eframe::App for App {
             });
 
         egui::TopBottomPanel::top("Header").show(ctx, |ui| {
-            let r = self.state.get_read().unwrap();
-            ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
-                egui::Frame::default()
-                    .inner_margin(4.0)
-                    .show(ui, |ui| match r.attached.as_ref() {
-                        Some(add) => {
-                            let richtext = RichText::new("✅").size(20.).color(Color32::GREEN);
-                            ui.label(richtext)
-                                .on_hover_text(format!("LSP attached at: {add:#?}"));
-                        }
-                        None => {
-                            let spinner = Spinner::new().size(20.).color(Color32::ORANGE);
-                            ui.add(spinner).on_hover_text("LSP is not attached");
+            if let Some(r) = self.state.get_read().ok() {
+                ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
+                    egui::Frame::default().inner_margin(4.0).show(ui, |ui| {
+                        match r.attached.as_ref() {
+                            Some(add) => {
+                                let richtext = RichText::new("✅").size(20.).color(Color32::GREEN);
+                                ui.label(richtext)
+                                    .on_hover_text(format!("LSP attached at: {add:#?}"));
+                            }
+                            None => {
+                                let spinner = Spinner::new().size(20.).color(Color32::ORANGE);
+                                ui.add(spinner).on_hover_text("LSP is not attached");
+                            }
                         }
                     });
-            });
+                });
+            }
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {

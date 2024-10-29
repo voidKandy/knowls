@@ -72,6 +72,7 @@ fn config_builds_correctly() {
             database: "espx".to_owned(),
             user: "root".to_owned(),
             pass: "root".to_owned(),
+            port: "18181".to_owned(),
         }),
     };
 

@@ -7,8 +7,8 @@ edition = "2021"
 path="src/lib.rs"
  
 [[bin]]
-name = "gui"
-path = "bin/gui.rs"
+name = "main"
+path = "bin/main.rs"
 
 [dependencies]
 anyhow.workspace=true
