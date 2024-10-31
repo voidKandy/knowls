@@ -1,8 +1,11 @@
-use std::io::Read;
+use std::{
+    io::Read,
+    sync::{Arc, Mutex},
+};
 
 use super::AppSectionState;
 use crate::state::SharedState;
-use egui::{RichText, Ui};
+use egui::{RichText, TextEdit, Ui};
 use egui_extras::{Size, StripBuilder};
 use tokio::{sync::mpsc::error::TryRecvError, task::JoinHandle};
 use tracing_log::log::warn;
@@ -36,6 +39,7 @@ impl Default for DBSectionState {
     fn default() -> Self {
         let (sender, thread_recv) = tokio::sync::mpsc::channel::<DBUiMessageToThread>(5);
         let (thread_sender, recv) = tokio::sync::mpsc::channel::<DBUiMessageFromThread>(5);
+
         Self {
             thread_handle: None,
             db_thread_alive: false,
@@ -68,56 +72,63 @@ impl DBSectionState {
 
             let handle = tokio::task::spawn(async move {
                 loop {
-                    if let Some(msg) = recv.recv().await {
-                        warn!("Thread received msg: {msg:#?}");
-                        match msg {
-                            DBUiMessageToThread::SpinUp => {
-                                let mut w = thread_state_clone
-                                    .get_write()
-                                    .expect("failed to get state write access");
-                                if let Some(db) = w.database.as_mut() {
-                                    db.init_thread().await.unwrap();
+                    match recv.recv().await {
+                        Some(msg) => {
+                            warn!("Thread received msg: {msg:#?}");
+                            match msg {
+                                DBUiMessageToThread::SpinUp => {
+                                    let mut w = thread_state_clone
+                                        .get_write()
+                                        .expect("failed to get state write access");
+                                    if let Some(db) = w.database.as_mut() {
+                                        db.init_thread().await.unwrap();
+                                    }
+                                    warn!("initialized db thread, dropping guard");
+                                    drop(w);
                                 }
-                                warn!("initialized db thread, dropping guard");
-                                drop(w);
-                            }
-                            DBUiMessageToThread::CheckHealth => {
-                                let r = thread_state_clone.get_read().unwrap();
-                                if let Some(db) = r.database.as_ref() {
-                                    if let Some(thread) = db.thread.as_ref() {
-                                        let is_healthy = thread.client.health().await.is_ok();
-                                        sender
-                                            .send(DBUiMessageFromThread::Healthy(is_healthy))
-                                            .await
-                                            .expect("failed to send");
+                                DBUiMessageToThread::CheckHealth => {
+                                    let r = thread_state_clone.get_read().unwrap();
+                                    if let Some(db) = r.database.as_ref() {
+                                        if let Some(thread) = db.thread.as_ref() {
+                                            let is_healthy = thread.client.health().await.is_ok();
+                                            sender
+                                                .send(DBUiMessageFromThread::Healthy(is_healthy))
+                                                .await
+                                                .expect("failed to send");
+                                        }
+                                    }
+                                    drop(r);
+                                }
+                                DBUiMessageToThread::FlushStdout => {
+                                    let mut w = thread_state_clone.get_write().unwrap();
+                                    if let Some(db) = w.database.as_mut() {
+                                        if let Some(thread) = db.thread.as_mut() {
+                                            let mut buf = String::new();
+                                            thread
+                                                .stdout
+                                                .read_to_string(&mut buf)
+                                                .expect("failed to read from stdout");
+                                            sender
+                                                .send(DBUiMessageFromThread::StdOut(buf))
+                                                .await
+                                                .expect("failed to send");
+                                        }
                                     }
                                 }
-                                drop(r);
-                            }
-                            DBUiMessageToThread::FlushStdout => {
-                                let mut w = thread_state_clone.get_write().unwrap();
-                                if let Some(db) = w.database.as_mut() {
-                                    if let Some(thread) = db.thread.as_mut() {
-                                        let mut buf = String::new();
-                                        thread
-                                            .stdout
-                                            .read_to_string(&mut buf)
-                                            .expect("failed to read from stdout");
-                                        sender
-                                            .send(DBUiMessageFromThread::StdOut(buf))
-                                            .await
-                                            .expect("failed to send");
+                                DBUiMessageToThread::Kill => {
+                                    let mut w = thread_state_clone.get_write().unwrap();
+                                    if let Some(db) = w.database.as_mut() {
+                                        db.thread = None;
                                     }
+                                    break;
                                 }
-                            }
-                            DBUiMessageToThread::Kill => {
-                                break;
                             }
                         }
+                        None => {}
                     }
                 }
             });
-            warn!("set thread handle to some");
+
             self.thread_handle = Some(handle);
         }
     }
@@ -130,7 +141,9 @@ impl AppSectionState for DBSectionState {
         let width = ui.available_width() / 4.;
 
         StripBuilder::new(ui)
-            .size(Size::exact(width)) // top cell
+            .size(Size::exact(width))
+            .size(Size::exact(width))
+            .size(Size::exact(width * 4.))
             .vertical(|mut strip| {
                 strip.strip(|builder| {
                     builder.sizes(Size::remainder(), 2).horizontal(|mut strip| {
@@ -150,51 +163,63 @@ impl AppSectionState for DBSectionState {
                                         .size(20.);
                                 ui.label(namespace);
                                 ui.label(database);
-
-                                if let Some(stdout) = self.db_stdout.as_mut() {
-                                    ui.text_edit_multiline(stdout);
-                                }
                             }
                         });
 
                         strip.cell(|ui| {
-                            match self.db_thread_alive {
-                                true => {
-                                    let kill_button = ui.button("Kill Database Instance");
-                                    if kill_button.clicked() {
-                                        self.sender.try_send(DBUiMessageToThread::Kill).unwrap();
+                            ui.vertical(|ui| {
+                                match self.db_thread_alive {
+                                    true => {
+                                        let kill_button = ui.button("Kill Database Instance");
+                                        if kill_button.clicked() {
+                                            self.sender
+                                                .try_send(DBUiMessageToThread::Kill)
+                                                .unwrap();
+                                        }
+                                    }
+                                    false => {
+                                        let spinup_button = ui.button("Spin Up Instance");
+                                        if spinup_button.clicked() {
+                                            self.sender
+                                                .try_send(DBUiMessageToThread::SpinUp)
+                                                .unwrap();
+                                        }
                                     }
                                 }
-                                false => {
-                                    let spinup_button = ui.button("Spin Up Instance");
-                                    if spinup_button.clicked() {
-                                        self.sender.try_send(DBUiMessageToThread::SpinUp).unwrap();
+                                match self.health_status {
+                                    Some(healthy) => {
+                                        let message = if healthy { "is" } else { "is not" };
+                                        ui.label(format!("DB {message} healthy"));
+                                    }
+                                    None => {
+                                        let health_button = ui.button("Health Check");
+                                        if health_button.clicked() {
+                                            self.sender
+                                                .try_send(DBUiMessageToThread::CheckHealth)
+                                                .unwrap();
+                                        }
                                     }
                                 }
-                            }
-
-                            match self.health_status {
-                                Some(healthy) => {
-                                    let message = if healthy { "is" } else { "is not" };
-                                    ui.label(format!("DB {message} healthy"));
+                                let flush_button = ui.button("Flush Stdout");
+                                if flush_button.clicked() {
+                                    self.sender
+                                        .try_send(DBUiMessageToThread::FlushStdout)
+                                        .unwrap();
                                 }
-                                None => {
-                                    let health_button = ui.button("Health Check");
-                                    if health_button.clicked() {
-                                        self.sender
-                                            .try_send(DBUiMessageToThread::CheckHealth)
-                                            .unwrap();
-                                    }
-                                }
-                            }
-
-                            let flush_button = ui.button("Flush Stdout");
-                            if flush_button.clicked() {
-                                self.sender
-                                    .try_send(DBUiMessageToThread::FlushStdout)
-                                    .unwrap();
-                            }
+                            });
                         });
+                    });
+                });
+
+                strip.cell(|ui| {
+                    ui.vertical_centered_justified(|ui| {
+                        if let Some(stdout) = self.db_stdout.as_mut() {
+                            let text_edit = TextEdit::multiline(stdout)
+                                .frame(false)
+                                .code_editor()
+                                .interactive(false);
+                            ui.add(text_edit);
+                        }
                     });
                 });
             });
