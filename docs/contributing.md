@@ -14,3 +14,7 @@ If you've built the `headless` binary, the LSP should just attach and work as ex
 If you've built the `relay` binary, you will need to run the GUI by running the binary in `bin/gui.rs`, once the GUI is running it should attach to your running client
 > **_NOTE_**:
   This will be indicated by a green checkmark in the top right corner of the GUI
+
+## Developing the UI
+For accurate compiler & linting errors make sure to de-comment "gui" from `default` in the `[features]` section of `Cargo.toml`
+DO NOT forget to re-comment when you are done
