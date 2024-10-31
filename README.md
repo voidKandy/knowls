@@ -78,6 +78,7 @@ Include this if you would like to use the [surrealdb](https://github.com/surreal
 * database: the name of the database
 * user: username for database access
 * pass: password for database access
+
 **Example:**
 ```toml
 [database]
