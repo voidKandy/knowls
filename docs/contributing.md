@@ -8,4 +8,9 @@ There are currently two builds of `espx-ls`:
 * **Relay** - `relay`
   > Contains only the logic necessary for relaying messages from the lsp client to the running gui, lsp server/gui needs to be started by user manually.
 
-
+## Gettin'r goin' (NVIM)
+Once you've built either of the builds and made it accessible through your `$PATH`, NeoVim should run the LSP as long as you've done the needed [setup steps](/README.md#neovim-setup).
+If you've built the `headless` binary, the LSP should just attach and work as expected.
+If you've built the `relay` binary, you will need to run the GUI by running the binary in `bin/gui.rs`, once the GUI is running it should attach to your running client
+> **_NOTE_**:
+  This will be indicated by a green checkmark in the top right corner of the GUI
