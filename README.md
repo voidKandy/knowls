@@ -2,35 +2,35 @@
 > Short for [espionox](https://github.com/voidKandy/espionox) language server
 
 Espx-LS utilizes the [language server protocol](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/) to provide an interface for interacting with language models. This is done through a command line tool like syntax within the comments of your code. The syntax is structured as follows: 
-`<languge comment syntax> <command> <scope> option<args>`
+`<languge comment syntax> <command> <agent> option<args>`
 
 ## Usage
-### Scopes
-> Additional scopes can be added manually by the user, followed up in the [configuration section](#configuration).
+### Agents 
+> Additional agents can be added manually by the user, followed up in the [configuration section](#configuration).
 
-A scope is a context that is associated with a character. By default, there are two scopes: 
+A agent is a context that is associated with a character. By default, there are two agents: 
 1. **Global**(`_`)
   * Is initialized with just the default assistant system prompt
   * Only changes when user either explicitly adds content or prompts 
 2. **Document**(`^`)
   * Is initialized with the default assistant system prompt, and the entirety of the document it is associated with.
   * Will change based on user's current document
-    >**NOTE:** Using the push command (`+`) with the document scope is redundant because the entirety of a current document is already included in the model's context
+    >**NOTE:** Using the push command (`+`) with the document agent is redundant because the entirety of a current document is already included in the model's context
 
   
 
 ### Commands
 Currently there are two supported commands: 
 1. **Prompt**(`@`)
-  * **Description**: Use this command to prompt the model within the specified scope.
-  * **Usage**: `@<scope> your prompt here`
+  * **Description**: Use this command to prompt the model within the specified agent.
+  * **Usage**: `@<agent> your prompt here`
   * **Example**: 
     ```rust
     // @_ How do I read from stdin?
     ```
 2. **Push**(`+`)
-  * **Description**: This command allows you to push a block of code into the model's context within the specified scope.
-  * **Usage**: `+<scope>` (At the top of a block of code)
+  * **Description**: This command allows you to push a block of code into the model's context within the specified agent.
+  * **Usage**: `+<agent>` (At the top of a block of code)
   * **Example**: 
     ```rust
     // +_
@@ -77,17 +77,17 @@ database = "espx"
 user = "root"
 pass = "root"
 ```
-#### [scopes]
-for defining custom scopes
+#### [agents]
+for defining custom agens 
 
 **Example:**
 ```toml
-[scopes]
-  [scopes.c]
-  [scopes.b]
-    sys_prompt = "Your prompt for scope B"
+[agents]
+  [agents.c]
+  [agents.b]
+    sys_prompt = "Your prompt for agent B"
 ```
->**Note:** In the example above, scope `c` will use the default assistant prompt, while scope `b` will utilize the specified system prompt. Both scopes can be accessed like any other scope. For instance, to prompt the model in scope `c`, you would use: `@c your prompt.`
+>**Note:** In the example above, agent `c` will use the default assistant prompt, while agent `b` will utilize the specified system prompt. Both agents can be accessed like any other agent. For instance, to prompt the model in agent `c`, you would use: `@c your prompt.`
 
 
 # IDE setup
@@ -147,4 +147,4 @@ If you have any questions, suggestions, or anything at all feel free to reach ou
 
 ## [Contributing](/docs/contributing.md)
 
-Thanks to thePrimagen for making his HTMX LSP Open Source so I could fork it and build it into this :D
+> Thanks to thePrimagen for making his [HTMX LSP](https://github.com/ThePrimeagen/htmx-lsp) Open Source so I could fork it and build it into this :D
