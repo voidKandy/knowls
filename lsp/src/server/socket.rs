@@ -11,21 +11,22 @@ use tokio::{
 };
 use tracing::warn;
 
-const TUI_SOCKET_ADDR: &str = "/tmp/espx_tui_socket.sock";
-const LSP_SOCKET_ADDR: &str = "/tmp/espx_lsp_socket.sock";
+pub const SERVER_SOCKET_ADDR: &str = "/tmp/espx_server.sock";
+pub const CLIENT_SOCKET_ADDR: &str = "/tmp/lsp_client.sock";
+
 pub async fn init_socket_listener_and_stream() -> (UnixListener, UnixStream) {
-    if Path::new(TUI_SOCKET_ADDR).exists() {
-        std::fs::remove_file(TUI_SOCKET_ADDR).unwrap();
+    if Path::new(SERVER_SOCKET_ADDR).exists() {
+        std::fs::remove_file(SERVER_SOCKET_ADDR).unwrap();
     }
 
-    let unix_listener = UnixListener::bind(TUI_SOCKET_ADDR).unwrap();
-    warn!("created socket at: {TUI_SOCKET_ADDR}");
+    let unix_listener = UnixListener::bind(SERVER_SOCKET_ADDR).unwrap();
+    warn!("created socket at: {SERVER_SOCKET_ADDR}");
 
     #[allow(unused_assignments)]
     let mut unix_stream_opt = Option::<UnixStream>::None;
 
     loop {
-        match UnixStream::connect(LSP_SOCKET_ADDR).await {
+        match UnixStream::connect(CLIENT_SOCKET_ADDR).await {
             Ok(stream) => {
                 warn!("connected to lsp socket");
                 unix_stream_opt = Some(stream);
@@ -33,7 +34,7 @@ pub async fn init_socket_listener_and_stream() -> (UnixListener, UnixStream) {
             }
 
             Err(_) => {
-                warn!("did not connect to socket at {LSP_SOCKET_ADDR}\nsleeping")
+                warn!("did not connect to socket at {SERVER_SOCKET_ADDR}\nsleeping")
             }
         }
 
