@@ -1,6 +1,4 @@
 use std::{fmt::Debug, ops::Sub};
-pub mod heap;
-pub mod lru;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum OneOf<T, O> {
@@ -36,13 +34,5 @@ where
             Self::Right(v) => Some(v),
             _ => None,
         }
-    }
-}
-
-pub fn abs_difference<T: Sub<Output = T> + Ord>(x: T, y: T) -> T {
-    if x < y {
-        y - x
-    } else {
-        x - y
     }
 }
