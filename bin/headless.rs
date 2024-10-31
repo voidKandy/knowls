@@ -10,7 +10,7 @@ use tokio::sync::RwLock;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     LazyLock::force(&RELAY_TRACING);
-    let config = Config::init();
+    let config = Config::init_from_pwd();
     tracing::warn!("initializing with config: {config:#?}");
     let state = SharedState::init(config).unwrap();
 

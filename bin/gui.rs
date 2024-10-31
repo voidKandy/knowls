@@ -1,17 +1,29 @@
+use clap::Parser;
 use espx_lsp_server::{
     self,
     config::Config,
-    server::{init_socket_listener_and_stream, unix_socket_loop, RELAY_TRACING},
+    server::{init_socket_listener_and_stream, unix_socket_loop},
     state::SharedState,
+    telemetry::TRACING,
     ui::run_gui,
 };
 use std::sync::{Arc, LazyLock};
 use tokio::sync::RwLock;
 
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    #[arg(short = 'c', long)]
+    config_file: String,
+}
+
 #[tokio::main]
 async fn main() -> eframe::Result<()> {
-    LazyLock::force(&RELAY_TRACING);
-    let config = Config::init();
+    LazyLock::force(&TRACING);
+    let args = Args::parse();
+    println!("{args:?}");
+    let config = Config::init_from_file_path(&args.config_file)
+        .expect("could not get config from given path");
     tracing::warn!("initializing with config: {config:#?}");
     let state = SharedState::init(config).unwrap();
 

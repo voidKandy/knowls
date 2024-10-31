@@ -2,6 +2,7 @@ pub mod agents;
 pub mod database;
 pub mod espx;
 use agents::{AgentConfig, AgentConfigFromFile, AgentSettings};
+use anyhow::anyhow;
 use database::{DatabaseConfig, DatabaseConfigFromFile};
 use espx::ModelConfig;
 use serde::{Deserialize, Serialize};
@@ -9,6 +10,7 @@ use std::{
     collections::HashMap,
     fs::{self},
     path::{Path, PathBuf},
+    str::FromStr,
 };
 use toml;
 use tracing::{debug, warn};
@@ -63,7 +65,7 @@ impl From<(ConfigFromFile, PathBuf)> for Config {
 }
 
 impl Config {
-    pub fn init() -> Self {
+    pub fn init_from_pwd() -> Self {
         let pwd = std::env::current_dir()
             .expect("failed to get current dir")
             .canonicalize()
@@ -77,7 +79,27 @@ impl Config {
             Ok(c) => c,
             Err(err) => panic!("CONFIG ERROR: {:?}", err),
         };
+
         Config::from((cnfg, pwd))
+    }
+
+    pub fn init_from_file_path(path_str: &str) -> anyhow::Result<Self> {
+        let path = PathBuf::from_str(path_str)?;
+        warn!("Building config from: {path:#?}");
+        let content = fs::read_to_string(path.clone()).unwrap_or(String::new());
+        let cnfg: ConfigFromFile = match toml::from_str(&content) {
+            Ok(c) => c,
+            Err(err) => panic!("CONFIG ERROR: {:?}", err),
+        };
+
+        let pwd: PathBuf = Into::<PathBuf>::into(
+            path.parent()
+                .ok_or(anyhow!("config file does not have a parent"))?,
+        )
+        .canonicalize()
+        .expect("could not canonicalize config pwd");
+
+        Ok(Config::from((cnfg, pwd)))
     }
 
     fn espx_ls_dir(&self) -> PathBuf {
