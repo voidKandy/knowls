@@ -1,13 +1,12 @@
-// use std::sync::LazyLock;
-// mod relay;
-
-// use espx_lsp_server::start_lsp;
-// use telemetry::TRACING;
-// use tracing_log::log::info;
-
-// fn main() -> anyhow::Result<()> {
-//     LazyLock::force(&TRACING);
-//     info!("Tracing Initialized");
-//     start_lsp()?;
-//     Ok(())
-// }
+pub mod agents;
+pub mod config;
+pub mod database;
+pub mod embeddings;
+pub mod error;
+pub mod handle;
+pub mod interact;
+pub mod server;
+pub mod state;
+pub mod telemetry;
+pub mod ui;
+mod util;

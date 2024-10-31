@@ -1952,19 +1952,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "espx-ls"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "espx_lsp_server",
- "tracing",
- "tracing-bunyan-formatter",
- "tracing-log 0.2.0",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "espx_lsp_server"
 version = "0.1.0"
 dependencies = [
@@ -5890,15 +5877,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
 dependencies = [
  "winapi-util",
-]
-
-[[package]]
-name = "testing"
-version = "0.1.0"
-dependencies = [
- "regex",
- "serde_json",
- "tracing-bunyan-formatter",
 ]
 
 [[package]]

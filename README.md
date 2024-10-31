@@ -145,4 +145,6 @@ From here you should be good to go!
 
 If you have any questions, suggestions, or anything at all feel free to reach out to me at [voidkandy@gmail.com](mailto:voidkandy@gmail.com)
 
+## [Contributing](/docs/contributing.md)
+
 Thanks to thePrimagen for making his HTMX LSP Open Source so I could fork it and build it into this :D

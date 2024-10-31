@@ -1,11 +1,4 @@
 /target
-.env
 /testing/espx-ls.toml
 /testing/.espx-ls
-/app/.espx-ls
-/app/espx-ls.toml
-/app/target/
-/testing/.fastembed_cache
-/lsp/.fastembed_cache/
-/lsp/.espx-ls
-/lsp/.env
+/testing/target
