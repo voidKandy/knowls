@@ -21,7 +21,7 @@ pub struct LspConfig {
     pub level: String,
 }
 
-pub static TRACING: LazyLock<()> = LazyLock::new(|| {
+pub static RELAY_TRACING: LazyLock<()> = LazyLock::new(|| {
     let config = LspConfig::parse();
     let default_filter_level = "debug".to_string();
     let subscriber_name = "lsp".to_string();

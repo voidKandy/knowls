@@ -1,16 +1,19 @@
-use espx_app::{
+use espx_lsp_server::{
     self,
-    socket::{init_socket_listener_and_stream, unix_socket_loop},
+    config::Config,
+    server::{init_socket_listener_and_stream, unix_socket_loop, RELAY_TRACING},
+    state::SharedState,
+    ui::run_gui,
 };
 use std::sync::{Arc, LazyLock};
 use tokio::sync::RwLock;
 
 #[tokio::main]
 async fn main() -> eframe::Result<()> {
-    LazyLock::force(&espx_app::telemetry::TRACING);
-    let config = espx_app::config::Config::init();
+    LazyLock::force(&RELAY_TRACING);
+    let config = Config::init();
     tracing::warn!("initializing with config: {config:#?}");
-    let state = espx_app::state::SharedState::init(config).unwrap();
+    let state = SharedState::init(config).unwrap();
 
     let unix_thread_state = state.clone();
     tokio::spawn(async move {
@@ -19,5 +22,5 @@ async fn main() -> eframe::Result<()> {
         unix_socket_loop(unix_stream, unix_listener, unix_thread_state).await
     });
 
-    espx_app::ui::run_gui(state)
+    run_gui(state)
 }

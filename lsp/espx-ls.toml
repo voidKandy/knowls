@@ -1,0 +1,10 @@
+[model]
+provider="Anthropic"
+api_key="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"
+
+
+[database]
+namespace="espx" 
+database="espx"
+user="root"
+pass="root"
