@@ -4,6 +4,14 @@
 Espx-LS utilizes the [language server protocol](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/) to provide an interface for interacting with language models. This is done through a command line tool like syntax within the comments of your code. The syntax is structured as follows: 
 `<languge comment syntax> <command> <agent> option<args>`
 
+## GUI or Headless
+If you build the `headless` binary, the LSP will attach to your editor's LSP client without you needing to do anything. 
+The `relay` binary is used specifically for using the GUI. The relay will attach to your editor's LSP client and *relay* all LSP JSON RPC messages from your editor to the running GUI. To run the GUI, run the `gui` binary in the `bin` folder. It requires that you pass a path to `espx-ls.toml` file with the `--config-file` or `-c` flag. If you are within the base of this directory simply running: 
+```bash
+cargo run --bin gui -- -c ./testing/espx-ls.toml
+```
+will get the GUI going (assuming you have created the `espx-ls.toml` file)
+
 ## Usage
 ### Agents 
 > Additional agents can be added manually by the user, followed up in the [configuration section](#configuration).
@@ -56,6 +64,7 @@ In order to get the LSP to attach within one of your projects, you must create a
 #### [model] 
 * provider: either `Anthropic` or `OpenAi`
 * api_key: an api for the corresponding provider
+
 **Example:**
 ```toml
 [model]
@@ -78,7 +87,7 @@ user = "root"
 pass = "root"
 ```
 #### [agents]
-for defining custom agens 
+for defining custom agents
 
 **Example:**
 ```toml
