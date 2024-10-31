@@ -1,3 +1,4 @@
+#![allow(unused)]
 use clap::Parser;
 use espx_lsp_server::{
     self,
@@ -5,8 +6,8 @@ use espx_lsp_server::{
     server::{init_socket_listener_and_stream, unix_socket_loop},
     state::SharedState,
     telemetry::TRACING,
-    ui::run_gui,
 };
+
 use std::sync::{Arc, LazyLock};
 use tokio::sync::RwLock;
 
@@ -17,7 +18,11 @@ struct Args {
     config_file: String,
 }
 
+#[cfg(feature = "gui")]
+use espx_lsp_server::ui::run_gui;
+
 #[tokio::main]
+#[cfg(feature = "gui")]
 async fn main() -> eframe::Result<()> {
     LazyLock::force(&TRACING);
     let args = Args::parse();
@@ -35,4 +40,19 @@ async fn main() -> eframe::Result<()> {
     });
 
     run_gui(state)
+}
+
+#[cfg(not(feature = "gui"))]
+fn main() {
+    println!(
+        r#"
+    
+    +--------------------------WARNING---------------------------+
+    | You can't run this binary without enabling the gui feature |
+    |       Try adding --features "gui" after --bin gui          |
+    +------------------------------------------------------------+
+
+"#
+    );
+    std::process::exit(1)
 }

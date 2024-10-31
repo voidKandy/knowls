@@ -7,5 +7,6 @@ pub mod interact;
 pub mod server;
 pub mod state;
 pub mod telemetry;
+#[cfg(feature = "gui")]
 pub mod ui;
 pub(crate) mod util;

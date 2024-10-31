@@ -8,7 +8,7 @@ Espx-LS utilizes the [language server protocol](https://microsoft.github.io/lang
 If you build the `headless` binary, the LSP will attach to your editor's LSP client without you needing to do anything. 
 The `relay` binary is used specifically for using the GUI. The relay will attach to your editor's LSP client and *relay* all LSP JSON RPC messages from your editor to the running GUI. To run the GUI, run the `gui` binary in the `bin` folder. It requires that you pass a path to `espx-ls.toml` file with the `--config-file` or `-c` flag. If you are within the base of this directory simply running: 
 ```bash
-cargo run --bin gui -- -c ./testing/espx-ls.toml
+cargo run --bin gui --features "gui" -- -c ./testing/espx-ls.toml
 ```
 will get the GUI going (assuming you have created the `espx-ls.toml` file)
 
