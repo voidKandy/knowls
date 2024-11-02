@@ -7,19 +7,22 @@ pub enum InteractID<ID> {
 pub const COMMAND_MASK: u8 = 0b0000_1111;
 pub const SCOPE_MASK: u8 = 0b1111_0000;
 
-pub const PROMPT_ID: InteractID<u8> = InteractID::Command(0b0);
-pub const PUSH_ID: InteractID<u8> = InteractID::Command(0b1);
-pub const RAG_PUSH_ID: InteractID<u8> = InteractID::Command(0b10);
-
+// Scopes
+pub const GLOBAL_CHARACTER: InteractID<char> = InteractID::Scope('_');
 pub const GLOBAL_ID: InteractID<u8> = InteractID::Scope(0b0);
-pub const DOCUMENT_ID: InteractID<u8> = InteractID::Scope(0b0001_0000);
 
 pub const DOCUMENT_CHARACTER: InteractID<char> = InteractID::Scope('^');
-pub const GLOBAL_CHARACTER: InteractID<char> = InteractID::Scope('_');
+pub const DOCUMENT_ID: InteractID<u8> = InteractID::Scope(0b0001_0000);
 
+// Commands
 pub const PROMPT_CHARACTER: InteractID<char> = InteractID::Command('@');
+pub const PROMPT_ID: InteractID<u8> = InteractID::Command(0b0);
+
 pub const PUSH_CHARACTER: InteractID<char> = InteractID::Command('+');
+pub const PUSH_ID: InteractID<u8> = InteractID::Command(0b1);
+
 pub const RAG_PUSH_CHARACTER: InteractID<char> = InteractID::Command('$');
+pub const RAG_PUSH_ID: InteractID<u8> = InteractID::Command(0b10);
 
 impl<ID> AsRef<ID> for InteractID<ID> {
     fn as_ref(&self) -> &ID {
