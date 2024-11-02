@@ -9,7 +9,7 @@ use espx_lsp_server::{
         block::{block_params_from, DBBlock, DBBlockParams},
         DatabaseStruct, FieldQuery, QueryBuilder,
     },
-    embeddings,
+    // embeddings,
     interact::lexer::Lexer,
 };
 use std::{io::Read, sync::LazyLock};

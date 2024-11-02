@@ -174,8 +174,7 @@ impl InteractRegistry {
 }
 
 mod tests {
-    
-    
+    use crate::interact::{id::SCOPE_MASK, registry::InteractRegistry};
 
     #[test]
     fn incrementation_works() {

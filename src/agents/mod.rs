@@ -1,6 +1,6 @@
 use std::{collections::HashMap, str::FromStr};
 pub mod error;
-use crate::config::espx::ModelConfig;
+use crate::{config::espx::ModelConfig, interact::id::GLOBAL_CHARACTER};
 use anyhow::anyhow;
 use error::AgentsError;
 use espionox::{
@@ -40,15 +40,17 @@ impl From<&Uri> for AgentID {
 
 impl From<char> for AgentID {
     fn from(value: char) -> Self {
-        Self::Char(value)
+        match value {
+            _ if value == *GLOBAL_CHARACTER.as_ref() => return Self::Global,
+            _ => Self::Char(value),
+        }
     }
 }
 
-pub const GLOBAL_AGENT_NAME: &str = "Global";
 impl std::fmt::Display for AgentID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let dis = match self {
-            Self::Global => GLOBAL_AGENT_NAME.to_string(),
+            Self::Global => "Global".to_string(),
             Self::Uri(uri_str) => {
                 let split = uri_str
                     .rsplitn(3, std::path::MAIN_SEPARATOR)

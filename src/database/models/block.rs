@@ -211,10 +211,13 @@ impl<'l> DatabaseStruct<'l, DBBlockParams> for DBBlock {
 }
 
 mod tests {
-    
-    
-    
-    
+    use super::{block_params_from, DBBlockParams};
+    use crate::{
+        database::models::block::{DBBlockID, LINES_PER_BLOCK},
+        interact::{lexer::Lexer, registry::InteractRegistry},
+    };
+    use lsp_types::Uri;
+    use std::str::FromStr;
 
     #[test]
     fn block_id_encoding_decoding() {

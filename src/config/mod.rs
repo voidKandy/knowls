@@ -15,7 +15,7 @@ use std::{
 use toml;
 use tracing::{debug, warn};
 
-use crate::agents::{AgentID, GLOBAL_AGENT_NAME};
+use crate::agents::AgentID;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Config {
@@ -40,16 +40,8 @@ impl From<(ConfigFromFile, PathBuf)> for Config {
             } else {
                 let mut map = HashMap::new();
 
-                for (str, settings) in cfg.agents.unwrap() {
-                    if str.chars().count() > 1 {
-                        if str.to_lowercase() == GLOBAL_AGENT_NAME.to_lowercase() {
-                            map.insert(AgentID::Global, settings.into());
-                        } else {
-                            warn!("Encountered a non global agent name: {str}")
-                        }
-                    } else {
-                        map.insert(AgentID::from(str.chars().next().unwrap()), settings.into());
-                    }
+                for (char, settings) in cfg.agents.unwrap() {
+                    map.insert(AgentID::from(char), settings.into());
                 }
                 Some(map)
             }

@@ -35,7 +35,7 @@ pub fn test_config(database: bool) -> anyhow::Result<Config> {
             {database_str}
 
             [agents]
-             [agents.global]
+             [agents._]
                 sys_prompt = "you are batman"
              [agents.c]
              [agents.b]

@@ -406,7 +406,7 @@ impl<'i> Lexer<'i> {
     }
 }
 mod tests {
-    
+    use crate::interact::lexer::Lexer;
 
     #[test]
     fn at_begginning_of_slice_works() {

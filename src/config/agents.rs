@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::agents::{AgentID, ASSISTANT_AGENT_SYSTEM_PROMPT};
 
-pub type AgentConfigFromFile = HashMap<String, AgentSettingsFromFile>;
+pub type AgentConfigFromFile = HashMap<char, AgentSettingsFromFile>;
 pub type AgentConfig = HashMap<AgentID, AgentSettings>;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

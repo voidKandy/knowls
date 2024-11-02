@@ -1,9 +1,5 @@
 use super::{DatabaseStruct, IntoOneOf};
-use crate::{
-    agents::{AgentID, GLOBAL_AGENT_NAME},
-    database::error::DatabaseError,
-    util::OneOf,
-};
+use crate::{agents::AgentID, database::error::DatabaseError, util::OneOf};
 use anyhow::anyhow;
 use base64::{prelude::BASE64_URL_SAFE_NO_PAD, Engine};
 use espionox::{
@@ -74,7 +70,7 @@ impl From<&AgentID> for DBAgentID {
 impl ToString for DBAgentID {
     fn to_string(&self) -> String {
         match self {
-            Self::Global => GLOBAL_AGENT_NAME.to_string(),
+            Self::Global => AgentID::Global.to_string(),
             Self::EncodedUri(uri) => uri.to_string(),
             Self::Char(char) => char.to_string(),
         }

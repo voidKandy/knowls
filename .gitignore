@@ -2,3 +2,5 @@
 /testing/espx-ls.toml
 /testing/.espx-ls
 /testing/target
+.env
+.espx-ls

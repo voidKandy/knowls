@@ -323,7 +323,7 @@ const COMMENT_EXTENSION_MAP: LazyLock<HashMap<&str, CommentStrInfo>> = LazyLock:
 });
 
 mod tests {
-    
+    use crate::interact::comment_str_map::get_comment_string_info;
 
     #[test]
     fn diff_idx_works() {
