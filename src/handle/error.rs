@@ -15,6 +15,7 @@ pub enum HandleError {
     #[error(transparent)]
     Undefined(#[from] anyhow::Error),
     Json(#[from] serde_json::error::Error),
+    TokioLock(#[from] tokio::sync::TryLockError),
     BufferOp(#[from] BufferOpError),
     EspxAgent(#[from] espionox::agents::error::AgentError),
     Stream(#[from] espionox::language_models::completions::streaming::StreamError),
@@ -32,6 +33,7 @@ impl Display for HandleError {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         let display = match self {
             Self::Undefined(err) => err.to_string(),
+            Self::TokioLock(err) => err.to_string(),
             Self::BufferOp(err) => err.to_string(),
             Self::EspxAgent(err) => err.to_string(),
             Self::Stream(err) => err.to_string(),

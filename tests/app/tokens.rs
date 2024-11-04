@@ -1,9 +1,8 @@
 use std::cmp::Ordering;
 
 use espx_lsp_server::interact::{
-    id::{GLOBAL_ID, PROMPT_ID},
-    lexer::{cmp_pos_range, Lexer, ParsedComment, Token},
-    registry::InteractRegistry,
+    parsing::{cmp_pos_range, comments::ParsedComment, lexer::Lexer, tokens::Token},
+    Interact, InteractArg, InteractVar,
 };
 use lsp_types::{Position, Range};
 use tracing::warn;
@@ -93,7 +92,7 @@ use lsp_types::Range;
 
 use super::{InteractError, InteractResult};
 
-// @_Comment
+// @_ Comment
 pub struct ParsedComment {
     content: String,
     range: Range,
@@ -106,11 +105,12 @@ comment
 pub struct MoreCode;
         "#
     .to_owned();
+    let ext = "rs";
 
-    let mut lexer = Lexer::new(&input, "rs");
+    let mut lexer = Lexer::new(&input, ext);
     warn!("created lexer: {lexer:?}");
-    let registry = InteractRegistry::default();
-    let tokens = lexer.lex_input(&registry);
+    let tokens = lexer.lex_input();
+
     let expected = vec![
         Token::Block(String::from(
             "\npub mod lexer;\nuse std::sync::LazyLock;\n\n",
@@ -121,8 +121,14 @@ pub struct MoreCode;
         )),
         Token::CommentStr,
         Token::Comment(ParsedComment::new(
-            Some(PROMPT_ID.as_ref() + GLOBAL_ID.as_ref()),
-            " @_Comment",
+            Some(Interact::new(
+                InteractVar::AGENT_PROMPT,
+                vec![
+                    InteractArg::Char('_'),
+                    InteractArg::String("Comment".to_string()),
+                ],
+            )),
+            " @_ Comment",
             Range {
                 start: lsp_types::Position {
                     line: 8,
@@ -130,7 +136,7 @@ pub struct MoreCode;
                 },
                 end: lsp_types::Position {
                     line: 8,
-                    character: 13,
+                    character: 14,
                 },
             },
         )),
@@ -181,14 +187,20 @@ pub struct MoreCode;
         },
         end: lsp_types::Position {
             line: 8,
-            character: 13,
+            character: 14,
         },
     };
 
-    let expected_content = "Comment".to_string();
+    let expected_content = " Comment".to_string();
 
-    let (range, content) = first_parsed_comment.text_for_interact().unwrap();
+    // let (range, content) = first_parsed_comment.text_for_interact().unwrap();
 
-    assert_eq!(expected_range, range);
-    assert_eq!(expected_content, content);
+    assert_eq!(
+        expected_range,
+        first_parsed_comment.range_without_comment(ext).unwrap()
+    );
+    assert_eq!(
+        expected_content,
+        first_parsed_comment.content_without_comment(ext).unwrap()
+    );
 }

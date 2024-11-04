@@ -1,7 +1,7 @@
 use super::{DatabaseStruct, IntoOneOf};
 use crate::{
     database::error::DatabaseError,
-    interact::lexer::{Token, TokenVec},
+    interact::parsing::tokens::{Token, TokenVec},
     util::OneOf,
 };
 use anyhow::anyhow;
@@ -214,7 +214,7 @@ mod tests {
     use super::{block_params_from, DBBlockParams};
     use crate::{
         database::models::block::{DBBlockID, LINES_PER_BLOCK},
-        interact::{lexer::Lexer, registry::InteractRegistry},
+        interact::parsing::lexer::Lexer,
     };
     use lsp_types::Uri;
     use std::str::FromStr;
@@ -269,7 +269,7 @@ fn again_again_again() {
         .to_string();
 
         let mut lexer = Lexer::new(&input, "rs");
-        let tokens = lexer.lex_input(&InteractRegistry::default());
+        let tokens = lexer.lex_input();
 
         let first_chunk_content = Some(String::from(
             r#" 

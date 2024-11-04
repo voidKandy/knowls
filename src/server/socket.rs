@@ -50,14 +50,14 @@ pub async fn init_socket_listener_and_stream() -> (UnixListener, UnixStream) {
 pub async fn unix_socket_loop(
     shared_stream: Arc<RwLock<UnixStream>>,
     listener: UnixListener,
-    mut state: SharedState,
+    mut state: SharedState<'static>,
 ) {
     loop {
         match listener.accept().await {
             Ok((stream, addr)) => {
                 warn!("client: {addr:?}");
                 let unix_stream = Arc::clone(&shared_stream);
-                state.get_write().unwrap().attached = Some(addr);
+                state.0.try_write().unwrap().attached = Some(addr);
                 let mut state = state.clone();
 
                 tokio::spawn(async move {
@@ -104,7 +104,7 @@ pub async fn unix_socket_loop(
                         }
                         buf.clear();
                     }
-                    state.get_write().unwrap().attached = None;
+                    state.0.try_write().unwrap().attached = None;
                 });
             }
             Err(err) => {

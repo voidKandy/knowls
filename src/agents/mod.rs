@@ -1,6 +1,6 @@
 use std::{collections::HashMap, str::FromStr};
 pub mod error;
-use crate::{config::espx::ModelConfig, interact::id::GLOBAL_CHARACTER};
+use crate::config::espx::ModelConfig;
 use anyhow::anyhow;
 use error::AgentsError;
 use espionox::{
@@ -41,7 +41,8 @@ impl From<&Uri> for AgentID {
 impl From<char> for AgentID {
     fn from(value: char) -> Self {
         match value {
-            _ if value == *GLOBAL_CHARACTER.as_ref() => return Self::Global,
+            // BAD
+            _ if value == '_' => return Self::Global,
             _ => Self::Char(value),
         }
     }

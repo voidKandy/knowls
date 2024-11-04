@@ -1,0 +1,281 @@
+use super::{
+    logic::{
+        InteractArg, InteractLspNotification, InteractLspRequest, InteractVar, IntoInteractVar,
+        LspMessageInteract,
+    },
+    parsing::{
+        comments::ParsedComment,
+        lexer::Lexer,
+        tokens::{Token, TokenVec},
+    },
+};
+use crate::{
+    agents::{message_stack_into_marked_string, AgentID, Agents},
+    handle::{
+        buffer_operations::BufferOperation,
+        error::{HandleError, HandleResult},
+    },
+    state::LspState,
+};
+use espionox::{
+    agents::{memory::OtherRoleTo, Agent},
+    language_models::completions::streaming::CompletionStreamStatus,
+    prelude::{stream_completion, ListenerTrigger, Message, MessageRole},
+};
+use lsp_server::RequestId;
+use lsp_types::{
+    ApplyWorkspaceEditParams, HoverContents, MessageType, Range, ShowMessageParams, TextEdit,
+    WorkspaceEdit,
+};
+use std::collections::HashMap;
+use tokio::sync::RwLockWriteGuard;
+use tracing::warn;
+
+pub(super) struct AgentInteractExArgs<'i> {
+    agent: &'i mut Agent,
+    user_input: AgentInteractUserInput,
+}
+
+pub(super) struct AgentInteractUserInput {
+    content: String,
+    range: Range,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum AgentInteract {
+    Push,
+    Prompt,
+    RagPrompt,
+}
+
+impl<'i> IntoInteractVar<'i, AgentInteractExArgs<'i>> for AgentInteract {
+    fn into_interact_var(&self) -> InteractVar {
+        InteractVar::Agent(*self)
+    }
+    fn n_expected_args(&self) -> usize {
+        match self {
+            AgentInteract::Push => 1,
+            AgentInteract::Prompt | AgentInteract::RagPrompt => 2,
+        }
+    }
+    fn get_execution_args(
+        &self,
+        w: &'i mut RwLockWriteGuard<'_, LspState<'static>>,
+        interact_comment: &'i ParsedComment<'_>,
+        doc_tokens: &'i TokenVec,
+        my_pos_in_tokens: usize,
+        args: &Vec<InteractArg>,
+    ) -> Option<AgentInteractExArgs<'i>> {
+        assert!(
+            args.len() <= self.n_expected_args(),
+            "Got too many arguments"
+        );
+
+        let agent_char = args[0].as_char().expect("first arg is not char");
+        let agent_id = AgentID::from(*agent_char);
+
+        if let Some(agents) = w.agents.as_mut() {
+            let agent = agents
+                .get_agent_mut(&agent_id)
+                .expect("No agent matching given id");
+            let content = match self {
+                Self::Prompt | Self::RagPrompt => args
+                    .into_iter()
+                    .nth(1)
+                    .expect("too little args")
+                    .as_string()
+                    .expect("second arg not string")
+                    .to_string(),
+
+                Self::Push => doc_tokens
+                    .get(my_pos_in_tokens + 1)
+                    .expect("No token after push command comment")
+                    .to_string(),
+            };
+
+            let ex_args = AgentInteractExArgs {
+                agent,
+                user_input: AgentInteractUserInput {
+                    content,
+                    range: interact_comment.range,
+                },
+            };
+
+            return Some(ex_args);
+        }
+        None
+    }
+}
+
+impl AgentInteract {
+    const PUSH: char = '+';
+    const PROMPT: char = '@';
+    const RAG_PROMPT: char = '$';
+}
+
+impl TryFrom<char> for AgentInteract {
+    type Error = anyhow::Error;
+    fn try_from(value: char) -> Result<Self, Self::Error> {
+        match value {
+            Self::PUSH => Ok(Self::Push),
+            Self::PROMPT => Ok(Self::Prompt),
+            Self::RAG_PROMPT => Ok(Self::RagPrompt),
+            _ => Err(anyhow::anyhow!(
+                "could not create agent interact from {value}"
+            )),
+        }
+    }
+}
+
+impl<'i> LspMessageInteract<AgentInteractExArgs<'i>> for AgentInteract {
+    async fn execute_request(
+        &self,
+        args: AgentInteractExArgs<'i>,
+        rq_id: RequestId,
+        params: impl Into<InteractLspRequest>,
+        sender: &mut crate::handle::buffer_operations::BufferOpChannelSender,
+    ) -> HandleResult<()> {
+        match Into::<InteractLspRequest>::into(params) {
+            InteractLspRequest::GotoDef(goto) => {
+                let uri = goto.text_document_position_params.text_document.uri;
+                let role = MessageRole::Other {
+                    alias: uri.to_string(),
+                    coerce_to: OtherRoleTo::User,
+                };
+
+                match self {
+                    Self::Push => {
+                        let message = ShowMessageParams {
+                            typ: MessageType::INFO,
+                            message: format!("Push command has no GOTO function"),
+                        };
+
+                        sender.send_operation(message.into()).await?;
+                    }
+                    Self::Prompt => {
+                        // let (range_of_text, text_for_interact) =
+                        //     comment.text_for_interact().unwrap();
+                        // if text_for_interact.trim().is_empty() {
+                        //     return Ok(());
+                        // }
+
+                        let mut changes = HashMap::new();
+
+                        changes.insert(
+                            uri.clone(),
+                            vec![TextEdit {
+                                range: args.user_input.range,
+                                new_text: String::new(),
+                            }],
+                        );
+
+                        let edit_params = ApplyWorkspaceEditParams {
+                            label: None,
+                            edit: WorkspaceEdit {
+                                changes: Some(changes),
+                                ..Default::default()
+                            },
+                        };
+
+                        sender.send_operation(edit_params.into()).await?;
+
+                        let message = Message::new_user(&args.user_input.content);
+                        args.agent.cache.push(message);
+
+                        let mut stream_handler = args
+                            .agent
+                            .do_action(stream_completion, (), Option::<ListenerTrigger>::None)
+                            .await?;
+
+                        sender
+                            .send_work_done_report(
+                                Some("Started Receiving Streamed Completion"),
+                                None,
+                            )
+                            .await?;
+
+                        let mut whole_message = String::new();
+                        loop {
+                            match stream_handler.receive(args.agent).await {
+                                Ok(status) => {
+                                    warn!("STATUS: {status:?}");
+                                    match status {
+                                        Some(CompletionStreamStatus::Working(token)) => {
+                                            warn!("got completion token: {}", token);
+                                            whole_message.push_str(&token);
+                                            sender
+                                                .send_work_done_report(Some(&token), None)
+                                                .await?;
+                                        }
+                                        Some(CompletionStreamStatus::Finished) => {
+                                            warn!("finished");
+                                            sender.send_work_done_end(Some("Finished")).await?;
+                                            break;
+                                        }
+                                        None => break,
+                                    }
+                                }
+                                Err(err) => return Err(HandleError::from(err)),
+                            }
+                        }
+
+                        if !whole_message.trim().is_empty() {
+                            warn!("whole message: {whole_message}");
+
+                            let message = ShowMessageParams {
+                                typ: MessageType::INFO,
+                                message: whole_message.clone(),
+                            };
+
+                            sender.send_operation(message.into()).await?;
+                        }
+                    }
+                    Self::RagPrompt => {}
+                }
+            }
+            InteractLspRequest::Hover(hover) => {
+                let stack = Agents::get_last_n_messages(&args.agent, 5);
+                let contents = HoverContents::Scalar(message_stack_into_marked_string(stack));
+                sender
+                    .send_operation(BufferOperation::HoverResponse {
+                        id: rq_id,
+                        contents,
+                    })
+                    .await?;
+            }
+            InteractLspRequest::Diagnostic(diag) => {}
+        }
+        Ok(())
+    }
+
+    async fn execute_notification(
+        &self,
+        args: AgentInteractExArgs<'i>,
+        noti: impl Into<InteractLspNotification>,
+        sender: &mut crate::handle::buffer_operations::BufferOpChannelSender,
+    ) -> HandleResult<()> {
+        match Into::<InteractLspNotification>::into(noti) {
+            InteractLspNotification::Save(did_save) => {
+                let uri_str = did_save.text_document.uri.as_str();
+                let role = MessageRole::Other {
+                    alias: uri_str.to_string(),
+                    coerce_to: OtherRoleTo::User,
+                };
+                args.agent.cache.mut_filter_by(&role, false);
+                match self {
+                    Self::Push => {
+                        args.agent.cache.push(Message {
+                            role,
+                            content: args.user_input.content,
+                        });
+                    }
+                    _ => {}
+                }
+            }
+            InteractLspNotification::Change(did_change) => {}
+            InteractLspNotification::Open(did_open) => {}
+        }
+
+        Ok(())
+    }
+}

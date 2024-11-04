@@ -1,17 +1,17 @@
-use super::{registry::InteractRegistry, InteractError, InteractResult};
-use crate::interact::comment_str_map::{get_comment_string_info, CommentStrInfo};
-use lsp_types::{Position, Range};
-use serde::{Deserialize, Serialize};
-use std::{
-    cmp::Ordering,
-    fmt::{Debug, Display},
+use super::{
+    super::logic::Interact,
+    comment_str_map::{get_comment_string_info, CommentStrInfo},
+    comments::ParsedComment,
+    tokens::{Token, TokenVec},
 };
+use lsp_types::{Position, Range};
+use std::{cmp::Ordering, fmt::Debug};
 use tracing::warn;
 
 #[derive(Debug)]
-pub struct Lexer<'i> {
-    input: &'i str,
-    comment_str_info: CommentStrInfo<'i>,
+pub struct Lexer<'input> {
+    input: &'input str,
+    comment_str_info: CommentStrInfo<'input>,
     buffer: String,
     position: usize,      // current position in input (points to current char)
     read_position: usize, // current reading position in input (after current char)
@@ -20,181 +20,16 @@ pub struct Lexer<'i> {
     current_char: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ParsedComment {
-    interact: Option<u8>,
-    pub content: String,
-    pub range: Range,
-}
-
-#[derive(Debug, Clone)]
-pub struct TokenVec {
-    vec: Vec<Token>,
-    comment_indices: Vec<usize>,
-}
-
-impl ToString for TokenVec {
-    fn to_string(&self) -> String {
-        let mut buffer = String::new();
-        for tok in self.vec.iter() {
-            if let Token::Block(str) = tok {
-                buffer.push_str(&str);
-            }
-        }
-        buffer
-    }
-}
-
-impl TokenVec {
-    pub fn new(vec: Vec<Token>, comment_indices: Vec<usize>) -> Self {
-        for idx in comment_indices.iter() {
-            match vec.iter().nth(*idx) {
-                Some(Token::Comment(_)) => {}
-                o => panic!("encountered {o:?} where Comment should be"),
-            }
-        }
-
-        Self {
-            vec,
-            comment_indices,
-        }
-    }
-
-    pub fn comment_indices(&self) -> &Vec<usize> {
-        &self.comment_indices
-    }
-
-    #[tracing::instrument(name = "getting comment in position")]
-    pub fn comment_in_position(&self, pos: &Position) -> Option<(&ParsedComment, usize)> {
-        warn!("this document has {} comments", self.comment_indices.len());
-        for idx in self.comment_indices.iter() {
-            let mut iter = self.vec.iter();
-            if let Some(token) = iter.nth(*idx) {
-                warn!("got token: {token:#?} at idx: {idx}");
-                if let Token::Comment(c) = token {
-                    warn!("got comment: {c:#?}");
-                    if cmp_pos_range(&c.range, pos) == Ordering::Equal {
-                        return Some((&c, *idx));
-                    }
-                    warn!("Position: {pos:#?} not in comment range");
-                }
-            }
-        }
-        None
-    }
-
-    pub fn get(&self, idx: usize) -> Option<&Token> {
-        self.vec.iter().nth(idx)
-    }
-}
-
-impl AsRef<Vec<Token>> for TokenVec {
-    fn as_ref(&self) -> &Vec<Token> {
-        &self.vec
-    }
-}
-
-impl IntoIterator for TokenVec {
-    type Item = ParsedComment;
-    type IntoIter = std::vec::IntoIter<Self::Item>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        let mut comments = vec![];
-        for idx in self.comment_indices {
-            if let Some(Token::Comment(c)) = self.vec.iter().nth(idx) {
-                comments.push(c.clone())
-            }
-        }
-
-        comments.into_iter()
-    }
-}
-
-/// Returns Ordering::Equal if the position is within the range, otherwise denotes which direction
-/// it is out of range
-pub fn cmp_pos_range(range: &Range, pos: &Position) -> Ordering {
-    if pos.line < range.start.line
-        || pos.character < range.start.character && pos.line == range.start.line
-    {
-        return Ordering::Less;
-    }
-
-    if pos.line > range.end.line
-        || pos.character > range.end.character && pos.line == range.end.line
-    {
-        return Ordering::Greater;
-    }
-
-    Ordering::Equal
-}
-
-impl ParsedComment {
-    pub fn new(interact: Option<u8>, content: &str, range: Range) -> Self {
-        Self {
-            interact,
-            content: content.to_string(),
-            range,
-        }
-    }
-    /// returns range and text of comment without interract
-    /// returns none if there is no interact code
-    pub fn text_for_interact(&self) -> Option<(Range, String)> {
-        self.interact.and_then(|_| {
-            // for now all interact codes have only 2 chars, no more no less.
-            // This will likely change in the future
-            let chars_amt = 2;
-
-            let whitespace_amt = self
-                .content
-                .chars()
-                .position(|c| !c.is_whitespace())
-                .unwrap();
-
-            let mut range = self.range.clone();
-
-            let skip_amt = chars_amt + whitespace_amt - 1;
-            range.start.character += skip_amt as u32;
-            let ret_str = self.content.chars().skip(skip_amt + 1).collect();
-
-            Some((range, ret_str))
-        })
-    }
-
-    pub fn try_get_interact_integer(&self) -> InteractResult<u8> {
-        self.interact.ok_or(InteractError::NoInteractInComment)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Token {
-    CommentStr,
-    Comment(ParsedComment),
-    Block(String),
-    End,
-}
-
-impl Display for Token {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let str = match self {
-            Self::End => "End",
-            Self::CommentStr => "CommentStr",
-            Self::Block(_) => "Block(String)",
-            Self::Comment(_) => "Comment(ParsedComment)",
-        };
-        write!(f, "{str}")
-    }
-}
-
-impl<'i> Lexer<'i> {
-    pub fn new(input: &'i String, ext: &'i str) -> Self {
+impl<'input> Lexer<'input> {
+    pub fn new(input: &'input str, ext: &'input str) -> Self {
         let comment_str_info = get_comment_string_info(ext).expect("no comment string");
 
         Self {
+            ch: input.to_lowercase().chars().nth(0),
             input,
             buffer: String::new(),
             position: 0,
             read_position: 1,
-            ch: input.to_lowercase().chars().nth(0),
             comment_str_info,
             current_line: 0,
             current_char: 0,
@@ -272,7 +107,8 @@ impl<'i> Lexer<'i> {
     }
 
     #[tracing::instrument(name = "lex input into TokenVec")]
-    pub fn lex_input(&mut self, registry: &InteractRegistry) -> TokenVec {
+    pub fn lex_input<'i>(&mut self, // , registry: &InteractRegistry
+    ) -> TokenVec<'i> {
         let mut vec = vec![];
         let mut comment_indices = vec![];
         let mut start_opt = Option::<Position>::None;
@@ -362,7 +198,7 @@ impl<'i> Lexer<'i> {
 
                     let content = self.buffer.drain(..).collect::<String>();
 
-                    let interact = registry.try_get_interact(&content);
+                    let interact = Interact::try_from_str(&content);
 
                     comment_indices.push(vec.len());
                     vec.push(Token::Comment(ParsedComment {
@@ -406,7 +242,7 @@ impl<'i> Lexer<'i> {
     }
 }
 mod tests {
-    use crate::interact::lexer::Lexer;
+    use super::Lexer;
 
     #[test]
     fn at_begginning_of_slice_works() {

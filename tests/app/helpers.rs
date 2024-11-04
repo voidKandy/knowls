@@ -2,7 +2,8 @@ use crate::test_docs::test_doc_1;
 
 use super::config::test_config;
 use espx_lsp_server::{
-    handle::buffer_operations::BufferOpChannelHandler, interact::lexer::Lexer, state::SharedState,
+    handle::buffer_operations::BufferOpChannelHandler, interact::parsing::lexer::Lexer,
+    state::SharedState,
 };
 use std::sync::LazyLock;
 use tracing::{info, subscriber::set_global_default, Subscriber};
@@ -19,7 +20,7 @@ pub static TEST_TRACING: LazyLock<()> = LazyLock::new(|| {
     info!("test tracing initialized");
 });
 
-pub fn test_state(database: bool) -> SharedState {
+pub fn test_state(database: bool) -> SharedState<'static> {
     SharedState::init(test_config(database).unwrap()).unwrap()
 }
 
@@ -27,10 +28,10 @@ pub fn test_buff_op_channel() -> BufferOpChannelHandler {
     BufferOpChannelHandler::new()
 }
 
-pub async fn handler_tests_state() -> SharedState {
+pub async fn handler_tests_state() -> SharedState<'static> {
     let mut state = test_state(false);
     let mut update_state = || {
-        let mut w = state.get_write().unwrap();
+        let mut w = state.0.try_write().unwrap();
         let (uri, content) = test_doc_1();
         let uri_str = uri.to_string();
 
@@ -39,7 +40,7 @@ pub async fn handler_tests_state() -> SharedState {
             .expect("uri does not have extension")
             .1;
         let mut lexer = Lexer::new(&content, ext);
-        let new_tokens = lexer.lex_input(&w.registry);
+        let new_tokens = lexer.lex_input();
 
         match w.documents.get_mut(&uri) {
             Some(tokens) => {

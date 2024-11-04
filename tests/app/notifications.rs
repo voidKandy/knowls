@@ -29,7 +29,7 @@ async fn handles_didsave_correctly() {
     let (uri, text) = test_doc_1();
     let state = handler_tests_state().await;
 
-    let r = state.get_read().unwrap();
+    let r = state.0.try_read().unwrap();
 
     let agent_cache_before = r
         .agents
@@ -50,7 +50,7 @@ async fn handles_didsave_correctly() {
         .await
         .unwrap();
 
-    let r = state.get_read().unwrap();
+    let r = state.0.try_read().unwrap();
     let agent_cache_len_after = r
         .agents
         .as_ref()
@@ -71,7 +71,7 @@ async fn handles_didsave_correctly() {
     handle_didSave(noti, state.clone(), buffer_op_channel.sender)
         .await
         .unwrap();
-    let r = state.get_read().unwrap();
+    let r = state.0.try_read().unwrap();
 
     warn!("agent cache before: {agent_cache_before:#?}",);
     let agent_cache_after = r

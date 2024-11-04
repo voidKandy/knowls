@@ -10,7 +10,7 @@ use espx_lsp_server::{
         DatabaseStruct, FieldQuery, QueryBuilder,
     },
     // embeddings,
-    interact::lexer::Lexer,
+    interact::parsing::lexer::Lexer,
 };
 use std::{io::Read, sync::LazyLock};
 use tracing::warn;
@@ -19,7 +19,7 @@ use tracing::warn;
 async fn health_test() {
     LazyLock::force(&TEST_TRACING);
     let mut state = test_state(true);
-    let mut w = state.get_write().unwrap();
+    let mut w = state.0.try_write().unwrap();
     w.database.as_mut().unwrap().init_thread().await.unwrap();
     if let Err(err) = w
         .database
@@ -110,7 +110,7 @@ async fn health_test() {
 async fn tokens_crud_test() {
     LazyLock::force(&TEST_TRACING);
     let mut state = test_state(true);
-    let mut w = state.get_write().unwrap();
+    let mut w = state.0.try_write().unwrap();
     let all_test_docs = vec![
         test_doc_1(),
         test_doc_2(),
@@ -119,7 +119,7 @@ async fn tokens_crud_test() {
         test_doc_5(),
     ];
 
-    let registry = w.registry.clone();
+    // let registry = w.registry.clone();
     let mut all_block_params = vec![];
     for (uri, content) in all_test_docs.iter() {
         let uri_str = uri.to_string();
@@ -129,7 +129,7 @@ async fn tokens_crud_test() {
             .expect("uri does not have extension")
             .1;
         let mut lexer = Lexer::new(&content, ext);
-        let tokens = lexer.lex_input(&registry);
+        let tokens = lexer.lex_input();
 
         all_block_params.push(block_params_from(&tokens, uri.clone()));
     }
@@ -253,7 +253,7 @@ async fn tokens_crud_test() {
 async fn memories_crud_test() {
     LazyLock::force(&TEST_TRACING);
     let mut state = test_state(true);
-    let mut w = state.get_write().unwrap();
+    let mut w = state.0.try_write().unwrap();
 
     let db = w.database.as_mut().unwrap();
     db.init_thread().await.unwrap();
