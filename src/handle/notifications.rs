@@ -5,7 +5,16 @@ use super::{
 };
 use crate::{
     handle::{diagnostics::LspDiagnostic, error::HandleError},
-    interact::{parsing::tokens::Token, InteractLspNotification},
+    interact::{
+        agent::uri_agent_role,
+        parsing::{
+            comments::ParsedComment,
+            lexer::Lexer,
+            ranges_overlap,
+            tokens::{Token, TokenVec},
+        },
+        InteractLspNotification,
+    },
     state::SharedState,
 };
 use anyhow::anyhow;
@@ -83,9 +92,9 @@ async fn handle_didChange(
 
 #[allow(non_snake_case)]
 #[tracing::instrument(name = "didSave", skip_all)]
-pub async fn handle_didSave(
+pub async fn handle_didSave<'s>(
     noti: Notification,
-    mut state: SharedState<'static>,
+    state: SharedState<'static>,
     mut sender: BufferOpChannelSender,
 ) -> HandleResult<()> {
     let params: DidSaveTextDocumentParams =
@@ -93,54 +102,64 @@ pub async fn handle_didSave(
     let text = params
         .text
         .as_ref()
-        .ok_or(HandleError::Undefined(anyhow!("No text on didSave noti")))?;
-    let uri = &params.text_document.uri;
+        .ok_or(HandleError::Undefined(anyhow!("No text on didSave noti")))?
+        .to_owned();
+    let uri = params.text_document.uri.clone();
+    let uri_str = &uri.as_str().to_string();
+
+    let ext = uri_str.rsplit_once('.').unwrap().1;
 
     let mut w = state.0.try_write()?;
-    let doc_tokens = w
+
+    let get_all_comments_with_interacts = |vec: TokenVec<'s>| -> Vec<(ParsedComment<'s>, usize)> {
+        vec.into_iter().enumerate().fold(
+            Vec::<(ParsedComment<'s>, usize)>::new(),
+            move |mut acc, (i, t)| {
+                if t.interact.is_some() {
+                    acc.push((t, i));
+                }
+                acc
+            },
+        )
+    };
+
+    let old_tokens: TokenVec = w
         .documents
-        .get(&uri)
-        .ok_or(anyhow!("document not present"))?
-        .clone();
+        .get(&params.text_document.uri)
+        .cloned()
+        .unwrap_or(TokenVec::new(vec![], vec![]));
+
+    let mut lexer = Lexer::new(&text, ext);
+    let new_tokens = lexer.lex_input();
+
+    let new_interact_comments = get_all_comments_with_interacts(new_tokens.clone());
 
     let notification = Into::<InteractLspNotification>::into(params);
-    for cmt_idx in doc_tokens.comment_indices().iter() {
-        if let Token::Comment(parsed_comment) =
-            doc_tokens.get(*cmt_idx).expect("Should be something here")
-        {
-            parsed_comment
-                .execute_from_lsp_message(
-                    &mut w,
-                    &mut sender,
-                    notification.clone(),
-                    &doc_tokens,
-                    *cmt_idx,
-                )
-                .await?;
+
+    // we need to wipe the agent's memory of anythng added by push everytime
+    // this is not ideal but I'm not sure of a better way to make sure agents
+    // are updated when the + command is removed from the document
+    if let Some(agents) = w.agents.as_mut() {
+        for (_, a) in agents.iter_agents_mut() {
+            a.cache.mut_filter_by(&uri_agent_role(&uri), false);
         }
     }
 
-    // w.update_doc_and_agents_from_text(uri.clone(), text)?;
-    // warn!("done updating");
+    for (cmt, idx) in new_interact_comments {
+        cmt.execute_from_lsp_message(&mut w, &mut sender, notification.clone(), &new_tokens, idx)
+            .await?;
+    }
 
+    w.documents.insert(uri, new_tokens.clone());
     if w.database.is_some() {
         w.save_docs_to_database().await?;
         w.save_agent_memories_to_database().await?;
     }
 
-    // let role = MessageRole::Other {
-    //     alias: uri.to_string(),
-    //     coerce_to: OtherRoleTo::User,
-    // };
-    // agent.cache.mut_filter_by(&role, false);
-
     sender
         .send_work_done_report(Some("Updated Document Tokens"), None)
         .await?;
 
-    // sender
-    //     .send_operation(LspDiagnostic::diagnose_document(uri.clone(), &mut w)?.into())
-    //     .await?;
     Ok(())
 }
 

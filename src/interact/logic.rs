@@ -35,7 +35,7 @@ impl InteractVar {
     pub const DATABASE_STATE: Self = Self::State(StateInteract::Database);
 }
 
-pub trait IntoInteractVar<'i, ARGS>: LspMessageInteract<ARGS> {
+pub trait IntoInteractVar<'i, ARGS>: LspMessageInteract<ARGS> + std::fmt::Debug + Copy {
     fn n_expected_args(&self) -> usize;
     fn into_interact_var(&self) -> InteractVar;
     async fn handle_args(&self, args: ARGS, sender: BufferOpChannelSender) -> anyhow::Result<()> {
@@ -160,9 +160,9 @@ impl<'i> Interact<'i> {
         }
     }
     pub fn try_from_str(str: &str) -> Option<Self> {
+        warn!("trying to build interact from str: {str}");
         let first_non_whitespace_pos = str.chars().position(|c| !c.is_whitespace())?;
         let command_char = str.chars().nth(first_non_whitespace_pos)?;
-        warn!("command_char: {command_char}");
 
         let (is_agent_int, is_state_int) = (
             AgentInteract::try_from(command_char).is_ok(),
@@ -170,9 +170,11 @@ impl<'i> Interact<'i> {
         );
 
         if !is_agent_int && !is_state_int {
+            warn!("could not get interact from input string");
             return None;
         }
 
+        warn!("command_char: {command_char}");
         if is_state_int && is_agent_int {
             panic!("somehow got both agent and state interact")
         }

@@ -7,7 +7,7 @@ pub fn test_doc_1() -> (Uri, String) {
     let test_doc_1 = r#"use std::io::{self, Read};
 // Comment without any command
 
-// @_hey
+// @_ hey
 fn main() {
     let mut raw = String::new();
     io::stdin()
@@ -52,7 +52,7 @@ fn fibonacci(n: u32) -> u32 {
     }
 }
 
-// @^Whats up 
+// @^ Whats up 
 fn main() {
     let result = fibonacci(10);
     println!("Fibonacci of 10: {}", result);

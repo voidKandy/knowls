@@ -3,11 +3,7 @@ use super::{
         InteractArg, InteractLspNotification, InteractLspRequest, InteractVar, IntoInteractVar,
         LspMessageInteract,
     },
-    parsing::{
-        comments::ParsedComment,
-        lexer::Lexer,
-        tokens::{Token, TokenVec},
-    },
+    parsing::{comments::ParsedComment, tokens::TokenVec},
 };
 use crate::{
     agents::{message_stack_into_marked_string, AgentID, Agents},
@@ -24,7 +20,7 @@ use espionox::{
 };
 use lsp_server::RequestId;
 use lsp_types::{
-    ApplyWorkspaceEditParams, HoverContents, MessageType, Range, ShowMessageParams, TextEdit,
+    ApplyWorkspaceEditParams, HoverContents, MessageType, Range, ShowMessageParams, TextEdit, Uri,
     WorkspaceEdit,
 };
 use std::collections::HashMap;
@@ -48,6 +44,13 @@ pub enum AgentInteract {
     RagPrompt,
 }
 
+pub fn uri_agent_role(uri: &Uri) -> MessageRole {
+    MessageRole::Other {
+        alias: uri.to_string(),
+        coerce_to: OtherRoleTo::User,
+    }
+}
+
 impl<'i> IntoInteractVar<'i, AgentInteractExArgs<'i>> for AgentInteract {
     fn into_interact_var(&self) -> InteractVar {
         InteractVar::Agent(*self)
@@ -58,6 +61,7 @@ impl<'i> IntoInteractVar<'i, AgentInteractExArgs<'i>> for AgentInteract {
             AgentInteract::Prompt | AgentInteract::RagPrompt => 2,
         }
     }
+    #[tracing::instrument("get ex args", skip(w))]
     fn get_execution_args(
         &self,
         w: &'i mut RwLockWriteGuard<'_, LspState<'static>>,
@@ -70,6 +74,7 @@ impl<'i> IntoInteractVar<'i, AgentInteractExArgs<'i>> for AgentInteract {
             args.len() <= self.n_expected_args(),
             "Got too many arguments"
         );
+        warn!("args: {args:?}");
 
         let agent_char = args[0].as_char().expect("first arg is not char");
         let agent_id = AgentID::from(*agent_char);
@@ -138,10 +143,6 @@ impl<'i> LspMessageInteract<AgentInteractExArgs<'i>> for AgentInteract {
         match Into::<InteractLspRequest>::into(params) {
             InteractLspRequest::GotoDef(goto) => {
                 let uri = goto.text_document_position_params.text_document.uri;
-                let role = MessageRole::Other {
-                    alias: uri.to_string(),
-                    coerce_to: OtherRoleTo::User,
-                };
 
                 match self {
                     Self::Push => {
@@ -256,16 +257,11 @@ impl<'i> LspMessageInteract<AgentInteractExArgs<'i>> for AgentInteract {
     ) -> HandleResult<()> {
         match Into::<InteractLspNotification>::into(noti) {
             InteractLspNotification::Save(did_save) => {
-                let uri_str = did_save.text_document.uri.as_str();
-                let role = MessageRole::Other {
-                    alias: uri_str.to_string(),
-                    coerce_to: OtherRoleTo::User,
-                };
-                args.agent.cache.mut_filter_by(&role, false);
                 match self {
+                    //
                     Self::Push => {
                         args.agent.cache.push(Message {
-                            role,
+                            role: uri_agent_role(&did_save.text_document.uri),
                             content: args.user_input.content,
                         });
                     }

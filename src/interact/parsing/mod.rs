@@ -20,3 +20,15 @@ pub fn cmp_pos_range(range: &lsp_types::Range, pos: &lsp_types::Position) -> std
 
     std::cmp::Ordering::Equal
 }
+
+pub fn ranges_overlap(range: &lsp_types::Range, other: &lsp_types::Range) -> bool {
+    let start1 = &range.start;
+    let end1 = &range.end;
+    let start2 = &other.start;
+    let end2 = &other.end;
+
+    (start1.line < end2.line)
+        || (start1.line == end2.line && start1.character < end2.character)
+            && (start2.line < end1.line
+                || (start2.line == end1.line && start2.character < end1.character))
+}

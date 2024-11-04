@@ -201,11 +201,9 @@ impl<'input> Lexer<'input> {
                     let interact = Interact::try_from_str(&content);
 
                     comment_indices.push(vec.len());
-                    vec.push(Token::Comment(ParsedComment {
-                        interact,
-                        content,
-                        range,
-                    }));
+                    vec.push(Token::Comment(ParsedComment::new(
+                        interact, &content, range,
+                    )));
 
                     if multiline_start {
                         vec.push(Token::CommentStr);

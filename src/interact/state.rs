@@ -22,6 +22,7 @@ impl<'i> IntoInteractVar<'i, ()> for StateInteract {
     fn n_expected_args(&self) -> usize {
         1
     }
+    #[tracing::instrument("get ex args", skip(w))]
     fn get_execution_args(
         &self,
         w: &'i mut RwLockWriteGuard<'_, LspState<'static>>,
