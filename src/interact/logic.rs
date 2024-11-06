@@ -1,5 +1,6 @@
 use super::{
     agent::AgentInteract,
+    execution::InteractDocumentInfo,
     parsing::{comments::ParsedComment, tokens::TokenVec},
     state::StateInteract,
 };
@@ -45,8 +46,7 @@ pub trait IntoInteractVar<'i, ARGS>: LspMessageInteract<ARGS> + std::fmt::Debug 
         &self,
         w: &'i mut RwLockWriteGuard<'_, LspState<'static>>,
         interact_comment: &'i ParsedComment<'_>,
-        doc_tokens: &'i TokenVec,
-        my_pos_in_tokens: usize,
+        doc_info: InteractDocumentInfo<'i>,
         args: &Vec<InteractArg>,
     ) -> Option<ARGS>;
 }

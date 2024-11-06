@@ -178,7 +178,7 @@ pub struct MoreCode;
         assert_eq!(token, exp)
     }
 
-    let first_parsed_comment: ParsedComment = tokens.into_iter().next().unwrap();
+    let first_parsed_comment: &ParsedComment = tokens.into_iter().next().unwrap().1;
 
     let expected_range = lsp_types::Range {
         start: lsp_types::Position {

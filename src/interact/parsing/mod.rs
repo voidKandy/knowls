@@ -2,6 +2,7 @@ mod comment_str_map;
 pub mod comments;
 pub mod lexer;
 pub mod tokens;
+pub use comment_str_map::language_ext_from_uri;
 
 /// Returns Ordering::Equal if the position is within the range, otherwise denotes which direction
 /// it is out of range

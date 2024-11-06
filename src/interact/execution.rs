@@ -7,8 +7,15 @@ use crate::{
     handle::{buffer_operations::BufferOpChannelSender, error::HandleResult},
     state::LspState,
 };
-use lsp_types::{MessageType, ShowMessageParams};
+use lsp_types::{MessageType, ShowMessageParams, Uri};
 use tokio::sync::RwLockWriteGuard;
+
+#[derive(Debug)]
+pub struct InteractDocumentInfo<'i> {
+    pub tokens: &'i TokenVec<'i>,
+    pub my_pos: usize,
+    pub uri: &'i Uri,
+}
 
 impl<'i> ParsedComment<'i> {
     pub async fn execute_from_lsp_message(
@@ -16,8 +23,7 @@ impl<'i> ParsedComment<'i> {
         w: &'_ mut RwLockWriteGuard<'_, LspState<'static>>,
         sender: &mut BufferOpChannelSender,
         message: impl Into<InteractLspMessage>,
-        doc_tokens: &'i TokenVec<'_>,
-        my_pos_in_tokens: usize,
+        doc_info: InteractDocumentInfo<'i>,
     ) -> HandleResult<()> {
         if let Some(interact) = &self.interact {
             let message = Into::<InteractLspMessage>::into(message);
@@ -30,13 +36,9 @@ impl<'i> ParsedComment<'i> {
 
             match interact.variant {
                 InteractVar::State(state_interact) => {
-                    if let Some(args) = state_interact.get_execution_args(
-                        w,
-                        self,
-                        doc_tokens,
-                        my_pos_in_tokens,
-                        &interact.parsed_args,
-                    ) {
+                    if let Some(args) =
+                        state_interact.get_execution_args(w, self, doc_info, &interact.parsed_args)
+                    {
                         match message {
                             InteractLspMessage::Req { body, id } => {
                                 state_interact
@@ -53,13 +55,9 @@ impl<'i> ParsedComment<'i> {
                 }
 
                 InteractVar::Agent(agent_interact) => {
-                    if let Some(args) = agent_interact.get_execution_args(
-                        w,
-                        self,
-                        doc_tokens,
-                        my_pos_in_tokens,
-                        &interact.parsed_args,
-                    ) {
+                    if let Some(args) =
+                        agent_interact.get_execution_args(w, self, doc_info, &interact.parsed_args)
+                    {
                         match message {
                             InteractLspMessage::Req { body, id } => {
                                 agent_interact

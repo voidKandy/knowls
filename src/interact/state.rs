@@ -1,4 +1,5 @@
 use super::{
+    execution::InteractDocumentInfo,
     logic::{InteractArg, InteractVar, IntoInteractVar, LspMessageInteract},
     parsing::{comments::ParsedComment, tokens::TokenVec},
 };
@@ -27,8 +28,9 @@ impl<'i> IntoInteractVar<'i, ()> for StateInteract {
         &self,
         w: &'i mut RwLockWriteGuard<'_, LspState<'static>>,
         interact_comment: &'i ParsedComment<'_>,
-        doc_tokens: &'i TokenVec,
-        my_pos_in_tokens: usize,
+        doc_info: InteractDocumentInfo<'i>,
+        // doc_tokens: &'i TokenVec,
+        // my_pos_in_tokens: usize,
         args: &Vec<InteractArg>,
     ) -> Option<()> {
         Some(())

@@ -11,19 +11,20 @@ use crate::{
         Database,
     },
     error::{StateError, StateResult},
-    interact::parsing::{
-        lexer::Lexer,
-        tokens::{Token, TokenVec},
+    interact::{
+        agent::uri_agent_role,
+        parsing::{
+            comments::ParsedComment,
+            language_ext_from_uri,
+            lexer::Lexer,
+            tokens::{Token, TokenVec},
+        },
+        InteractVar,
     },
-};
-use anyhow::anyhow;
-use espionox::{
-    agents::{memory::OtherRoleTo, Agent},
-    prelude::{Message, MessageRole},
 };
 use lsp_types::Uri;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use tokio::sync::RwLock;
 use tracing::warn;
 
 pub struct SharedState<'i>(pub Arc<RwLock<LspState<'i>>>);
@@ -160,106 +161,62 @@ impl<'i> LspState<'i> {
         Ok(())
     }
 
-    // pub fn agent_mut_from_interact_integer(
-    //     &mut self,
-    //     integer: u8,
-    //     current_document_uri: &Uri,
-    // ) -> StateResult<&mut Agent> {
-    //     let agents = self
-    //         .agents
-    //         .as_mut()
-    //         .ok_or(anyhow!("agents not present in state"))?;
-    //     let masked = integer & SCOPE_MASK;
-    //     let char = self
-    //         .registry
-    //         .get_interact_char(InteractID::Scope(masked))
-    //         .ok_or(anyhow!(
-    //             "registry does not have char for id: {integer} with mask: {SCOPE_MASK}"
-    //         ))?;
-    //     match char {
-    //         _ if char == &DOCUMENT_CHARACTER => Ok(agents
-    //             .get_agent_mut(current_document_uri)
-    //             .ok_or(StateError::AgentsNotPresent)?),
-    //         _ if char == &GLOBAL_CHARACTER => Ok(agents
-    //             .get_agent_mut(AgentID::Global)
-    //             .ok_or(StateError::AgentsNotPresent)?),
-    //         custom_character => Ok(agents
-    //             .get_agent_mut(*custom_character.as_ref())
-    //             .ok_or(StateError::AgentsNotPresent)?),
-    //     }
-    // }
-
-    pub fn update_doc_and_agents_from_text(&mut self, uri: Uri, text: String) -> StateResult<()> {
+    pub fn update_doc_and_agents_from_text(&mut self, uri: Uri, text: &str) -> StateResult<()> {
         if let Some(agents) = self.agents.as_mut() {
             agents.update_or_create_doc_agent(&uri, &text);
         }
 
-        let uri_str = uri.as_str().to_string();
-        let ext = uri_str
-            .rsplit_once('.')
-            .expect("uri does not have extension")
-            .1;
+        let ext = language_ext_from_uri(&uri);
         let mut lexer = Lexer::new(&text, ext);
         let new_tokens = lexer.lex_input();
         let old_tokens = self.documents.get(&uri);
-        // let mut prev_existing_push_scopes = old_tokens
-        //     .and_then(|tokens| {
-        //         let mut all = vec![];
-        //         for idx in tokens.comment_indices() {
-        //             let mut iter = tokens.as_ref().iter();
-        //             if let Token::Comment(comment) = iter.nth(*idx).unwrap() {
-        // if let Some(integer) = comment.try_get_interact_integer().ok() {
-        //     if integer & COMMAND_MASK == *PUSH_ID.as_ref() {
-        //         all.push(integer & SCOPE_MASK)
-        //     }
-        // }
-        //         }
-        //     }
-        //     Some(all)
-        // })
-        // .unwrap_or(vec![]);
 
-        let role = MessageRole::Other {
-            alias: uri.to_string(),
-            coerce_to: OtherRoleTo::User,
-        };
+        let prev_push_interacts: Vec<(usize, &ParsedComment<'_>)> = old_tokens
+            .and_then(|tokens| {
+                Some(
+                    tokens
+                        .into_iter()
+                        .filter_map(|(i, c)| {
+                            if let Some(ref int) = c.interact {
+                                if let InteractVar::AGENT_PUSH = int.variant {
+                                    return Some((i, c));
+                                }
+                            }
+                            None
+                        })
+                        .collect(),
+                )
+            })
+            .unwrap_or(vec![]);
 
-        for comment_idx in new_tokens.comment_indices() {
-            let mut iter = new_tokens.as_ref().iter();
-            if let Token::Comment(comment) = iter.nth(*comment_idx).unwrap() {
-                warn!("comment: {comment:?}");
-                // if let Some(integer) = comment.try_get_interact_integer().ok() {
-                //     warn!("id: {integer:?}");
-                //     if let Some(idx) = prev_existing_push_scopes
-                //         .iter()
-                //         .position(|id| integer & SCOPE_MASK == *id)
-                //     {
-                //         prev_existing_push_scopes.remove(idx);
-                //     }
-                // if let Some(agent) = self.agent_mut_from_interact_integer(integer, &uri).ok() {
-                //     agent.cache.mut_filter_by(&role, false);
-                //     if integer & COMMAND_MASK == *PUSH_ID.as_ref() {
-                //         warn!("command is push");
-                //         if let Some(Token::Block(block)) = iter.next() {
-                //             warn!("block: {block:?}");
-                //             warn!("got agent, updating");
-                //             agent.cache.push(Message {
-                //                 role: role.clone(),
-                //                 content: block.to_owned(),
-                //             });
-                //         }
-                //     }
-                // }
-                // }
+        for (i, comment) in prev_push_interacts {
+            let agent_id = comment
+                .interact
+                .as_ref()
+                .expect("should be some")
+                .parsed_args
+                .first()
+                .and_then(|arg| arg.as_char().and_then(|ch| Some(AgentID::from(*ch))));
+
+            if agent_id.is_some() && new_tokens.get(i).is_none()
+                || new_tokens.get(i).is_some_and(|t| {
+                    warn!("token exists at matching place: {t:#?}");
+                    if let Token::Comment(c) = t {
+                        c != comment
+                    } else {
+                        false
+                    }
+                })
+            {
+                if let Some(agents) = self.agents.as_mut() {
+                    if let Some(agent) = agents.get_agent_mut(agent_id.as_ref().unwrap()) {
+                        let role = uri_agent_role(&uri);
+                        warn!("wiping messages with role: {role:#?} from agent: {agent_id:#?}");
+                        agent.cache.mut_filter_by(&role, false);
+                    }
+                }
             }
         }
-
-        // for scope in prev_existing_push_scopes {
-        //     if let Some(agent) = self.agent_mut_from_interact_integer(scope, &uri).ok() {
-        //         warn!("cleaning agent for scope: {scope}");
-        //         agent.cache.mut_filter_by(&role, false);
-        //     }
-        // }
 
         match self.documents.get_mut(&uri) {
             Some(tokens) => {

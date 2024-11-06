@@ -1,3 +1,5 @@
+use lsp_types::Uri;
+
 use super::super::{InteractError, InteractResult};
 use std::{collections::HashMap, sync::LazyLock};
 
@@ -11,6 +13,10 @@ pub(super) struct CommentStrInfo<'i> {
 pub(super) struct MultilineCommentInfo<'i> {
     start: &'i str,
     end: &'i str,
+}
+
+pub fn language_ext_from_uri(uri: &Uri) -> &str {
+    uri.as_str().rsplit_once('.').unwrap().1
 }
 
 impl<'i> CommentStrInfo<'i> {

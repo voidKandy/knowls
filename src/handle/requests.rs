@@ -2,7 +2,11 @@ use super::{
     buffer_operations::{BufferOpChannelHandler, BufferOpChannelSender},
     error::{HandleError, HandleResult},
 };
-use crate::{handle::BufferOpChannelJoinHandle, interact::InteractLspRequest, state::SharedState};
+use crate::{
+    handle::BufferOpChannelJoinHandle,
+    interact::{execution::InteractDocumentInfo, InteractLspRequest},
+    state::SharedState,
+};
 use anyhow::anyhow;
 use lsp_server::Request;
 use lsp_types::{DocumentDiagnosticParams, GotoDefinitionParams, HoverParams};
@@ -78,8 +82,14 @@ pub async fn handle_goto_definition(
     };
 
     let request = Into::<InteractLspRequest>::into(params);
+
+    let doc_info = InteractDocumentInfo {
+        tokens: &doc_tokens,
+        my_pos: idx,
+        uri: &uri,
+    };
     comment
-        .execute_from_lsp_message(&mut w, &mut sender, (request, req.id), &doc_tokens, idx)
+        .execute_from_lsp_message(&mut w, &mut sender, (request, req.id), doc_info)
         .await?;
 
     Ok(())
@@ -114,8 +124,14 @@ pub async fn handle_hover(
     };
 
     let request = Into::<InteractLspRequest>::into(params);
+
+    let doc_info = InteractDocumentInfo {
+        tokens: &doc_tokens,
+        my_pos: idx,
+        uri: &uri,
+    };
     comment
-        .execute_from_lsp_message(&mut w, &mut sender, (request, req.id), &doc_tokens, idx)
+        .execute_from_lsp_message(&mut w, &mut sender, (request, req.id), doc_info)
         .await?;
 
     Ok(())

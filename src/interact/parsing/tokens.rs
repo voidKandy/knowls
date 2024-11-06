@@ -50,15 +50,14 @@ impl<'i> ToString for TokenVec<'i> {
     }
 }
 
-impl<'i> IntoIterator for TokenVec<'i> {
-    type Item = ParsedComment<'i>;
+impl<'o, 'i> IntoIterator for &'o TokenVec<'i> {
+    type Item = (usize, &'o ParsedComment<'i>);
     type IntoIter = std::vec::IntoIter<Self::Item>;
-
     fn into_iter(self) -> Self::IntoIter {
         let mut comments = vec![];
-        for idx in self.comment_indices {
-            if let Some(Token::Comment(c)) = self.vec.iter().nth(idx) {
-                comments.push(c.clone())
+        for idx in self.comment_indices.iter() {
+            if let Some(Token::Comment(c)) = self.vec.iter().nth(*idx) {
+                comments.push((*idx, c))
             }
         }
 

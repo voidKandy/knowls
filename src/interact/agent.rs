@@ -1,9 +1,15 @@
 use super::{
+    execution::InteractDocumentInfo,
     logic::{
         InteractArg, InteractLspNotification, InteractLspRequest, InteractVar, IntoInteractVar,
         LspMessageInteract,
     },
-    parsing::{comments::ParsedComment, tokens::TokenVec},
+    parsing::{
+        comments::ParsedComment,
+        language_ext_from_uri,
+        lexer::Lexer,
+        tokens::{Token, TokenVec},
+    },
 };
 use crate::{
     agents::{message_stack_into_marked_string, AgentID, Agents},
@@ -16,7 +22,7 @@ use crate::{
 use espionox::{
     agents::{memory::OtherRoleTo, Agent},
     language_models::completions::streaming::CompletionStreamStatus,
-    prelude::{stream_completion, ListenerTrigger, Message, MessageRole},
+    prelude::{Message, MessageRole},
 };
 use lsp_server::RequestId;
 use lsp_types::{
@@ -28,8 +34,14 @@ use tokio::sync::RwLockWriteGuard;
 use tracing::warn;
 
 pub(super) struct AgentInteractExArgs<'i> {
-    agent: &'i mut Agent,
     user_input: AgentInteractUserInput,
+    lsp_state: AgentInteractLspState<'i>,
+}
+
+pub(super) struct AgentInteractLspState<'i> {
+    agent: &'i mut Agent,
+    document_state: TokenVec<'i>,
+    uri: &'i Uri,
 }
 
 pub(super) struct AgentInteractUserInput {
@@ -51,6 +63,42 @@ pub fn uri_agent_role(uri: &Uri) -> MessageRole {
     }
 }
 
+impl<'i> AgentInteractExArgs<'i> {
+    fn update_agent_memory_from_new_text(&mut self, new_text: &str) {
+        let mut lexer = Lexer::new(new_text, language_ext_from_uri(&self.lsp_state.uri));
+        let new_tokens = lexer.lex_input();
+
+        let prev_push_interacts: Vec<(usize, &ParsedComment<'_>)> = self
+            .lsp_state
+            .document_state
+            .into_iter()
+            .filter_map(|(i, c)| {
+                if let Some(ref int) = c.interact {
+                    if let InteractVar::AGENT_PUSH = int.variant {
+                        return Some((i, c));
+                    }
+                }
+                None
+            })
+            .collect();
+
+        for (i, comment) in prev_push_interacts {
+            if new_tokens.get(i).is_some_and(|t| {
+                if let Token::Comment(c) = t {
+                    c != comment
+                } else {
+                    true
+                }
+            }) {
+                self.lsp_state
+                    .agent
+                    .cache
+                    .mut_filter_by(&uri_agent_role(self.lsp_state.uri), false)
+            }
+        }
+    }
+}
+
 impl<'i> IntoInteractVar<'i, AgentInteractExArgs<'i>> for AgentInteract {
     fn into_interact_var(&self) -> InteractVar {
         InteractVar::Agent(*self)
@@ -66,8 +114,7 @@ impl<'i> IntoInteractVar<'i, AgentInteractExArgs<'i>> for AgentInteract {
         &self,
         w: &'i mut RwLockWriteGuard<'_, LspState<'static>>,
         interact_comment: &'i ParsedComment<'_>,
-        doc_tokens: &'i TokenVec,
-        my_pos_in_tokens: usize,
+        doc_info: InteractDocumentInfo<'i>,
         args: &Vec<InteractArg>,
     ) -> Option<AgentInteractExArgs<'i>> {
         assert!(
@@ -78,6 +125,7 @@ impl<'i> IntoInteractVar<'i, AgentInteractExArgs<'i>> for AgentInteract {
 
         let agent_char = args[0].as_char().expect("first arg is not char");
         let agent_id = AgentID::from(*agent_char);
+        let document_state = w.documents.get(&doc_info.uri).unwrap().to_owned();
 
         if let Some(agents) = w.agents.as_mut() {
             let agent = agents
@@ -92,14 +140,19 @@ impl<'i> IntoInteractVar<'i, AgentInteractExArgs<'i>> for AgentInteract {
                     .expect("second arg not string")
                     .to_string(),
 
-                Self::Push => doc_tokens
-                    .get(my_pos_in_tokens + 1)
+                Self::Push => doc_info
+                    .tokens
+                    .get(doc_info.my_pos + 1)
                     .expect("No token after push command comment")
                     .to_string(),
             };
 
             let ex_args = AgentInteractExArgs {
-                agent,
+                lsp_state: AgentInteractLspState {
+                    agent,
+                    document_state,
+                    uri: doc_info.uri,
+                },
                 user_input: AgentInteractUserInput {
                     content,
                     range: interact_comment.range,
@@ -181,12 +234,9 @@ impl<'i> LspMessageInteract<AgentInteractExArgs<'i>> for AgentInteract {
                         sender.send_operation(edit_params.into()).await?;
 
                         let message = Message::new_user(&args.user_input.content);
-                        args.agent.cache.push(message);
+                        args.lsp_state.agent.cache.push(message);
 
-                        let mut stream_handler = args
-                            .agent
-                            .do_action(stream_completion, (), Option::<ListenerTrigger>::None)
-                            .await?;
+                        let mut stream_handler = args.lsp_state.agent.stream_completion().await?;
 
                         sender
                             .send_work_done_report(
@@ -197,7 +247,7 @@ impl<'i> LspMessageInteract<AgentInteractExArgs<'i>> for AgentInteract {
 
                         let mut whole_message = String::new();
                         loop {
-                            match stream_handler.receive(args.agent).await {
+                            match stream_handler.receive(args.lsp_state.agent).await {
                                 Ok(status) => {
                                     warn!("STATUS: {status:?}");
                                     match status {
@@ -235,7 +285,7 @@ impl<'i> LspMessageInteract<AgentInteractExArgs<'i>> for AgentInteract {
                 }
             }
             InteractLspRequest::Hover(hover) => {
-                let stack = Agents::get_last_n_messages(&args.agent, 5);
+                let stack = Agents::get_last_n_messages(&args.lsp_state.agent, 5);
                 let contents = HoverContents::Scalar(message_stack_into_marked_string(stack));
                 sender
                     .send_operation(BufferOperation::HoverResponse {
@@ -260,7 +310,7 @@ impl<'i> LspMessageInteract<AgentInteractExArgs<'i>> for AgentInteract {
                 match self {
                     //
                     Self::Push => {
-                        args.agent.cache.push(Message {
+                        args.lsp_state.agent.cache.push(Message {
                             role: uri_agent_role(&did_save.text_document.uri),
                             content: args.user_input.content,
                         });
@@ -268,7 +318,9 @@ impl<'i> LspMessageInteract<AgentInteractExArgs<'i>> for AgentInteract {
                     _ => {}
                 }
             }
-            InteractLspNotification::Change(did_change) => {}
+            InteractLspNotification::Change(did_change) => {
+                if let Some(change) = did_change.content_changes.first() {}
+            }
             InteractLspNotification::Open(did_open) => {}
         }
 
