@@ -36,12 +36,8 @@ impl InteractVar {
     pub const DATABASE_STATE: Self = Self::State(StateInteract::Database);
 }
 
-pub trait IntoInteractVar<'i, ARGS>: LspMessageInteract<ARGS> + std::fmt::Debug + Copy {
+pub trait LspMessageInteract<'i, ARGS>: std::fmt::Debug + Copy {
     fn n_expected_args(&self) -> usize;
-    fn into_interact_var(&self) -> InteractVar;
-    async fn handle_args(&self, args: ARGS, sender: BufferOpChannelSender) -> anyhow::Result<()> {
-        Ok(())
-    }
     fn get_execution_args(
         &self,
         w: &'i mut RwLockWriteGuard<'_, LspState<'static>>,
@@ -49,6 +45,20 @@ pub trait IntoInteractVar<'i, ARGS>: LspMessageInteract<ARGS> + std::fmt::Debug 
         doc_info: InteractDocumentInfo<'i>,
         args: &Vec<InteractArg>,
     ) -> Option<ARGS>;
+
+    async fn execute_request(
+        &self,
+        args: ARGS,
+        rq_id: RequestId,
+        params: impl Into<InteractLspRequest>,
+        sender: &mut BufferOpChannelSender,
+    ) -> HandleResult<()>;
+    async fn execute_notification(
+        &self,
+        args: ARGS,
+        noti: impl Into<InteractLspNotification>,
+        sender: &mut BufferOpChannelSender,
+    ) -> HandleResult<()>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -133,22 +143,6 @@ impl Into<InteractLspNotification> for DidOpenTextDocumentParams {
     fn into(self) -> InteractLspNotification {
         InteractLspNotification::Open(self)
     }
-}
-
-pub trait LspMessageInteract<ARGS> {
-    async fn execute_request(
-        &self,
-        args: ARGS,
-        rq_id: RequestId,
-        params: impl Into<InteractLspRequest>,
-        sender: &mut BufferOpChannelSender,
-    ) -> HandleResult<()>;
-    async fn execute_notification(
-        &self,
-        args: ARGS,
-        noti: impl Into<InteractLspNotification>,
-        sender: &mut BufferOpChannelSender,
-    ) -> HandleResult<()>;
 }
 
 impl<'i> Interact<'i> {

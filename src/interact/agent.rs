@@ -1,8 +1,7 @@
 use super::{
     execution::InteractDocumentInfo,
     logic::{
-        InteractArg, InteractLspNotification, InteractLspRequest, InteractVar, IntoInteractVar,
-        LspMessageInteract,
+        InteractArg, InteractLspNotification, InteractLspRequest, InteractVar, LspMessageInteract,
     },
     parsing::{
         comments::ParsedComment,
@@ -56,6 +55,26 @@ pub enum AgentInteract {
     RagPrompt,
 }
 
+impl AgentInteract {
+    const PUSH: char = '+';
+    const PROMPT: char = '@';
+    const RAG_PROMPT: char = '$';
+}
+
+impl TryFrom<char> for AgentInteract {
+    type Error = anyhow::Error;
+    fn try_from(value: char) -> Result<Self, Self::Error> {
+        match value {
+            Self::PUSH => Ok(Self::Push),
+            Self::PROMPT => Ok(Self::Prompt),
+            Self::RAG_PROMPT => Ok(Self::RagPrompt),
+            _ => Err(anyhow::anyhow!(
+                "could not create agent interact from {value}"
+            )),
+        }
+    }
+}
+
 pub fn uri_agent_role(uri: &Uri) -> MessageRole {
     MessageRole::Other {
         alias: uri.to_string(),
@@ -99,93 +118,7 @@ impl<'i> AgentInteractExArgs<'i> {
     }
 }
 
-impl<'i> IntoInteractVar<'i, AgentInteractExArgs<'i>> for AgentInteract {
-    fn into_interact_var(&self) -> InteractVar {
-        InteractVar::Agent(*self)
-    }
-    fn n_expected_args(&self) -> usize {
-        match self {
-            AgentInteract::Push => 1,
-            AgentInteract::Prompt | AgentInteract::RagPrompt => 2,
-        }
-    }
-    #[tracing::instrument("get ex args", skip(w))]
-    fn get_execution_args(
-        &self,
-        w: &'i mut RwLockWriteGuard<'_, LspState<'static>>,
-        interact_comment: &'i ParsedComment<'_>,
-        doc_info: InteractDocumentInfo<'i>,
-        args: &Vec<InteractArg>,
-    ) -> Option<AgentInteractExArgs<'i>> {
-        assert!(
-            args.len() <= self.n_expected_args(),
-            "Got too many arguments"
-        );
-        warn!("args: {args:?}");
-
-        let agent_char = args[0].as_char().expect("first arg is not char");
-        let agent_id = AgentID::from(*agent_char);
-        let document_state = w.documents.get(&doc_info.uri).unwrap().to_owned();
-
-        if let Some(agents) = w.agents.as_mut() {
-            let agent = agents
-                .get_agent_mut(&agent_id)
-                .expect("No agent matching given id");
-            let content = match self {
-                Self::Prompt | Self::RagPrompt => args
-                    .into_iter()
-                    .nth(1)
-                    .expect("too little args")
-                    .as_string()
-                    .expect("second arg not string")
-                    .to_string(),
-
-                Self::Push => doc_info
-                    .tokens
-                    .get(doc_info.my_pos + 1)
-                    .expect("No token after push command comment")
-                    .to_string(),
-            };
-
-            let ex_args = AgentInteractExArgs {
-                lsp_state: AgentInteractLspState {
-                    agent,
-                    document_state,
-                    uri: doc_info.uri,
-                },
-                user_input: AgentInteractUserInput {
-                    content,
-                    range: interact_comment.range,
-                },
-            };
-
-            return Some(ex_args);
-        }
-        None
-    }
-}
-
-impl AgentInteract {
-    const PUSH: char = '+';
-    const PROMPT: char = '@';
-    const RAG_PROMPT: char = '$';
-}
-
-impl TryFrom<char> for AgentInteract {
-    type Error = anyhow::Error;
-    fn try_from(value: char) -> Result<Self, Self::Error> {
-        match value {
-            Self::PUSH => Ok(Self::Push),
-            Self::PROMPT => Ok(Self::Prompt),
-            Self::RAG_PROMPT => Ok(Self::RagPrompt),
-            _ => Err(anyhow::anyhow!(
-                "could not create agent interact from {value}"
-            )),
-        }
-    }
-}
-
-impl<'i> LspMessageInteract<AgentInteractExArgs<'i>> for AgentInteract {
+impl<'i> LspMessageInteract<'i, AgentInteractExArgs<'i>> for AgentInteract {
     async fn execute_request(
         &self,
         args: AgentInteractExArgs<'i>,
@@ -325,5 +258,65 @@ impl<'i> LspMessageInteract<AgentInteractExArgs<'i>> for AgentInteract {
         }
 
         Ok(())
+    }
+    fn n_expected_args(&self) -> usize {
+        match self {
+            AgentInteract::Push => 1,
+            AgentInteract::Prompt | AgentInteract::RagPrompt => 2,
+        }
+    }
+    #[tracing::instrument("get ex args", skip(w))]
+    fn get_execution_args(
+        &self,
+        w: &'i mut RwLockWriteGuard<'_, LspState<'static>>,
+        interact_comment: &'i ParsedComment<'_>,
+        doc_info: InteractDocumentInfo<'i>,
+        args: &Vec<InteractArg>,
+    ) -> Option<AgentInteractExArgs<'i>> {
+        assert!(
+            args.len() <= self.n_expected_args(),
+            "Got too many arguments"
+        );
+        warn!("args: {args:?}");
+
+        let agent_char = args[0].as_char().expect("first arg is not char");
+        let agent_id = AgentID::from(*agent_char);
+        let document_state = w.documents.get(&doc_info.uri).unwrap().to_owned();
+
+        if let Some(agents) = w.agents.as_mut() {
+            let agent = agents
+                .get_agent_mut(&agent_id)
+                .expect("No agent matching given id");
+            let content = match self {
+                Self::Prompt | Self::RagPrompt => args
+                    .into_iter()
+                    .nth(1)
+                    .expect("too little args")
+                    .as_string()
+                    .expect("second arg not string")
+                    .to_string(),
+
+                Self::Push => doc_info
+                    .tokens
+                    .get(doc_info.my_pos + 1)
+                    .expect("No token after push command comment")
+                    .to_string(),
+            };
+
+            let ex_args = AgentInteractExArgs {
+                lsp_state: AgentInteractLspState {
+                    agent,
+                    document_state,
+                    uri: doc_info.uri,
+                },
+                user_input: AgentInteractUserInput {
+                    content,
+                    range: interact_comment.range,
+                },
+            };
+
+            return Some(ex_args);
+        }
+        None
     }
 }

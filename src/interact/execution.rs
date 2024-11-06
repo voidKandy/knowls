@@ -1,5 +1,5 @@
 use super::{
-    logic::{IntoInteractVar, LspMessageInteract},
+    logic::LspMessageInteract,
     parsing::{comments::ParsedComment, tokens::TokenVec},
     InteractLspMessage, InteractVar,
 };

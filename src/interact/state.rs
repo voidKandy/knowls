@@ -1,6 +1,6 @@
 use super::{
     execution::InteractDocumentInfo,
-    logic::{InteractArg, InteractVar, IntoInteractVar, LspMessageInteract},
+    logic::{InteractArg, InteractVar, LspMessageInteract},
     parsing::{comments::ParsedComment, tokens::TokenVec},
 };
 use crate::{handle::error::HandleResult, state::LspState};
@@ -16,27 +16,6 @@ impl StateInteract {
     const DATABASE: char = '%';
 }
 
-impl<'i> IntoInteractVar<'i, ()> for StateInteract {
-    fn into_interact_var(&self) -> InteractVar {
-        InteractVar::State(*self)
-    }
-    fn n_expected_args(&self) -> usize {
-        1
-    }
-    #[tracing::instrument("get ex args", skip(w))]
-    fn get_execution_args(
-        &self,
-        w: &'i mut RwLockWriteGuard<'_, LspState<'static>>,
-        interact_comment: &'i ParsedComment<'_>,
-        doc_info: InteractDocumentInfo<'i>,
-        // doc_tokens: &'i TokenVec,
-        // my_pos_in_tokens: usize,
-        args: &Vec<InteractArg>,
-    ) -> Option<()> {
-        Some(())
-    }
-}
-
 impl TryFrom<char> for StateInteract {
     type Error = anyhow::Error;
     fn try_from(value: char) -> Result<Self, Self::Error> {
@@ -49,7 +28,7 @@ impl TryFrom<char> for StateInteract {
     }
 }
 
-impl LspMessageInteract<()> for StateInteract {
+impl<'i> LspMessageInteract<'i, ()> for StateInteract {
     async fn execute_notification(
         &self,
         args: (),
@@ -67,5 +46,20 @@ impl LspMessageInteract<()> for StateInteract {
         sender: &mut crate::handle::buffer_operations::BufferOpChannelSender,
     ) -> HandleResult<()> {
         Ok(())
+    }
+    fn n_expected_args(&self) -> usize {
+        1
+    }
+    #[tracing::instrument("get ex args", skip(w))]
+    fn get_execution_args(
+        &self,
+        w: &'i mut RwLockWriteGuard<'_, LspState<'static>>,
+        interact_comment: &'i ParsedComment<'_>,
+        doc_info: InteractDocumentInfo<'i>,
+        // doc_tokens: &'i TokenVec,
+        // my_pos_in_tokens: usize,
+        args: &Vec<InteractArg>,
+    ) -> Option<()> {
+        Some(())
     }
 }
