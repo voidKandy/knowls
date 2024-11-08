@@ -12,8 +12,8 @@ pub struct DocumentSectionState {
 }
 
 impl AppSectionState for DocumentSectionState {
-    fn render(&mut self, ui: &mut Ui, state: SharedState) {
-        let r = state.get_read().unwrap();
+    fn render(&mut self, ui: &mut Ui, state: SharedState<'static>) {
+        let r = state.0.try_read().unwrap();
         let all_documents: Vec<&Uri> = r.documents.keys().collect();
 
         let w = ui.available_width() / 4.;

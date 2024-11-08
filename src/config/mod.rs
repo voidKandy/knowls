@@ -4,6 +4,7 @@ pub mod espx;
 use agents::{AgentConfig, AgentConfigFromFile, AgentSettings};
 use anyhow::anyhow;
 use database::{DatabaseConfig, DatabaseConfigFromFile};
+use egui::containers;
 use espx::ModelConfig;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -41,7 +42,15 @@ impl From<(ConfigFromFile, PathBuf)> for Config {
                 let mut map = HashMap::new();
 
                 for (char, settings) in cfg.agents.unwrap() {
-                    map.insert(AgentID::from(char), settings.into());
+                    match AgentID::try_from_char(char) {
+                        Some(id) => {
+                            let _ = map.insert(id, settings.into());
+                        }
+                        None => {
+                            warn!("config does not support configuring ^ agent, skipping");
+                            continue;
+                        }
+                    }
                 }
                 Some(map)
             }

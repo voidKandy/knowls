@@ -1,12 +1,8 @@
-use std::{
-    io::Read,
-    sync::{Arc, Mutex},
-};
-
 use super::AppSectionState;
 use crate::state::SharedState;
 use egui::{RichText, TextEdit, Ui};
 use egui_extras::{Size, StripBuilder};
+use std::io::Read;
 use tokio::{sync::mpsc::error::TryRecvError, task::JoinHandle};
 use tracing_log::log::warn;
 
@@ -53,7 +49,7 @@ impl Default for DBSectionState {
     }
 }
 
-impl DBSectionState {
+impl<'gui> DBSectionState {
     fn reset_channels(&mut self) {
         warn!("resetting channels");
         let (sender, thread_recv) = tokio::sync::mpsc::channel::<DBUiMessageToThread>(5);
@@ -64,7 +60,7 @@ impl DBSectionState {
         self.recv = recv;
     }
 
-    fn init_thread(&mut self, mut thread_state_clone: SharedState) {
+    fn init_thread(&mut self, thread_state_clone: SharedState<'static>) {
         if self.thread_handle.is_none() {
             warn!("initializing thread");
             let sender = self.thread_sender.take().expect("No sender?");
@@ -78,7 +74,8 @@ impl DBSectionState {
                             match msg {
                                 DBUiMessageToThread::SpinUp => {
                                     let mut w = thread_state_clone
-                                        .get_write()
+                                        .0
+                                        .try_write()
                                         .expect("failed to get state write access");
                                     if let Some(db) = w.database.as_mut() {
                                         db.init_thread().await.unwrap();
@@ -87,7 +84,7 @@ impl DBSectionState {
                                     drop(w);
                                 }
                                 DBUiMessageToThread::CheckHealth => {
-                                    let r = thread_state_clone.get_read().unwrap();
+                                    let r = thread_state_clone.0.try_read().unwrap();
                                     if let Some(db) = r.database.as_ref() {
                                         if let Some(thread) = db.thread.as_ref() {
                                             let is_healthy = thread.client.health().await.is_ok();
@@ -100,7 +97,7 @@ impl DBSectionState {
                                     drop(r);
                                 }
                                 DBUiMessageToThread::FlushStdout => {
-                                    let mut w = thread_state_clone.get_write().unwrap();
+                                    let mut w = thread_state_clone.0.try_write().unwrap();
                                     if let Some(db) = w.database.as_mut() {
                                         if let Some(thread) = db.thread.as_mut() {
                                             let mut buf = String::new();
@@ -116,7 +113,7 @@ impl DBSectionState {
                                     }
                                 }
                                 DBUiMessageToThread::Kill => {
-                                    let mut w = thread_state_clone.get_write().unwrap();
+                                    let mut w = thread_state_clone.0.try_write().unwrap();
                                     if let Some(db) = w.database.as_mut() {
                                         db.thread = None;
                                     }
@@ -135,7 +132,7 @@ impl DBSectionState {
 }
 
 impl AppSectionState for DBSectionState {
-    fn render(&mut self, ui: &mut Ui, state: SharedState) {
+    fn render(&mut self, ui: &mut Ui, state: SharedState<'static>) {
         let thread_state_clone = state.clone();
         self.init_thread(thread_state_clone);
         let width = ui.available_width() / 4.;
@@ -149,7 +146,8 @@ impl AppSectionState for DBSectionState {
                     builder.sizes(Size::remainder(), 2).horizontal(|mut strip| {
                         strip.cell(|ui| {
                             if let Some(db) = state
-                                .get_read()
+                                .0
+                                .try_read()
                                 .ok()
                                 .as_ref()
                                 .and_then(|r| r.database.as_ref())

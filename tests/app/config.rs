@@ -59,9 +59,9 @@ fn pwd() -> PathBuf {
 #[test]
 fn config_builds_correctly() {
     let mut agents: AgentConfig = HashMap::new();
-    agents.insert('c'.into(), AgentSettings::default());
+    agents.insert(AgentID::Char('c'), AgentSettings::default());
     agents.insert(
-        'b'.into(),
+        AgentID::Char('b'),
         AgentSettings {
             sys_prompt: "prompt".to_string(),
         },

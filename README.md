@@ -1,7 +1,7 @@
-# Espx-LS
+# `espx_ls` 
 > Short for [espionox](https://github.com/voidKandy/espionox) language server
 
-Espx-LS utilizes the [language server protocol](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/) to provide an interface for interacting with language models. This is done through a command line tool like syntax within the comments of your code. The syntax is structured as follows: 
+`esp_ls` utilizes the [language server protocol](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/) to provide an interface for interacting with language models. This is done through a command line tool like syntax within the comments of your code. The syntax is structured as follows: 
 `<languge comment syntax> <command> <agent> option<args>`
 
 ## GUI or Headless

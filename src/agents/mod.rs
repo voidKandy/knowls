@@ -1,6 +1,6 @@
 use std::{collections::HashMap, str::FromStr};
 pub mod error;
-use crate::config::espx::ModelConfig;
+use crate::{config::espx::ModelConfig, interact::execution::InteractDocumentInfo};
 use anyhow::anyhow;
 use error::AgentsError;
 use espionox::{
@@ -25,6 +25,17 @@ pub enum AgentID {
     Char(char),
 }
 
+impl AgentID {
+    /// Only will return none if char is the current document character
+    pub fn try_from_char(ch: char) -> Option<Self> {
+        match ch {
+            '_' => return Some(Self::Global),
+            '^' => return None,
+            _ => Some(Self::Char(ch)),
+        }
+    }
+}
+
 impl From<&AgentID> for AgentID {
     fn from(value: &AgentID) -> Self {
         warn!("Cloning agent ID");
@@ -38,12 +49,11 @@ impl From<&Uri> for AgentID {
     }
 }
 
-impl From<char> for AgentID {
-    fn from(value: char) -> Self {
-        match value {
-            // BAD
-            _ if value == '_' => return Self::Global,
-            _ => Self::Char(value),
+impl From<(&Uri, char)> for AgentID {
+    fn from((uri, ch): (&Uri, char)) -> Self {
+        match Self::try_from_char(ch) {
+            Some(me) => me,
+            None => Self::from(uri),
         }
     }
 }
@@ -157,7 +167,7 @@ impl Agents {
 
     pub fn create_custom_agent(&mut self, char: char, sys_prompt: String) {
         let agent = self::inits::custom(&self.config, sys_prompt);
-        self.insert_agent(char, agent);
+        self.insert_agent(AgentID::Char(char), agent);
     }
 
     pub fn get_last_n_messages(agent: &Agent, n: usize) -> MessageStackRef {

@@ -26,15 +26,15 @@ impl<'i> AsRef<Vec<Token<'i>>> for TokenVec<'i> {
     }
 }
 
-impl<'i> Display for Token<'i> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let str = match self {
+impl<'i> Token<'i> {
+    /// Displays only enough info to know which type of token the token is
+    pub fn variant_display(&self) -> &str {
+        match self {
             Self::End => "End",
             Self::CommentStr => "CommentStr",
             Self::Block(_) => "Block(String)",
             Self::Comment(_) => "Comment(ParsedComment)",
-        };
-        write!(f, "{str}")
+        }
     }
 }
 

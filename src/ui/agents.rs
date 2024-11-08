@@ -135,9 +135,9 @@ impl AgentsSectionState {
                 AgentID::Global => Some(get_global(agents)),
                 AgentID::Char(_) => {
                     let char: char = switch_to_agent.try_into().expect("failed to get char");
-                    agents
-                        .get_agent_ref(char)
-                        .and_then(|ag| Some(EditingAgent::from_agent_and_id(ag, char)))
+                    agents.get_agent_ref(AgentID::Char(char)).and_then(|ag| {
+                        Some(EditingAgent::from_agent_and_id(ag, AgentID::Char(char)))
+                    })
                 }
                 AgentID::Uri(_) => {
                     let uri: Uri = switch_to_agent.try_into().expect("failed to get uri");
@@ -159,8 +159,8 @@ impl AgentsSectionState {
 }
 
 impl AppSectionState for AgentsSectionState {
-    fn render(&mut self, ui: &mut Ui, mut state: SharedState) {
-        let mut guard = state.get_write().unwrap();
+    fn render(&mut self, ui: &mut Ui, state: SharedState<'static>) {
+        let mut guard = state.0.try_write().unwrap();
         match guard.agents.as_mut() {
             Some(agents) => {
                 self.update(agents);

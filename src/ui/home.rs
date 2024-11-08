@@ -8,7 +8,7 @@ use super::AppSectionState;
 pub struct HomeSectionState;
 
 impl AppSectionState for HomeSectionState {
-    fn render(&mut self, ui: &mut Ui, state: SharedState) {
+    fn render(&mut self, ui: &mut Ui, state: SharedState<'static>) {
         ui.label("Welcome");
     }
 }

@@ -196,7 +196,10 @@ impl<'i> LspState<'i> {
                 .expect("should be some")
                 .parsed_args
                 .first()
-                .and_then(|arg| arg.as_char().and_then(|ch| Some(AgentID::from(*ch))));
+                .and_then(|arg| {
+                    arg.as_char()
+                        .and_then(|ch| Some(AgentID::from((&uri, *ch))))
+                });
 
             if agent_id.is_some() && new_tokens.get(i).is_none()
                 || new_tokens.get(i).is_some_and(|t| {

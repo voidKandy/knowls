@@ -5,7 +5,7 @@ use super::{
     tokens::{Token, TokenVec},
 };
 use lsp_types::{Position, Range};
-use std::{cmp::Ordering, fmt::Debug};
+use std::fmt::Debug;
 use tracing::warn;
 
 #[derive(Debug)]

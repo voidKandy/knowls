@@ -10,7 +10,7 @@ use eframe::egui;
 use egui::{Color32, Layout, RichText, SelectableLabel, Spinner, Ui};
 use home::HomeSectionState;
 
-pub fn run_gui(state: SharedState) -> eframe::Result {
+pub fn run_gui(state: SharedState<'static>) -> eframe::Result {
     let options = eframe::NativeOptions {
         run_and_return: true,
         viewport: egui::ViewportBuilder::default().with_inner_size([1080.0, 720.0]),
@@ -80,12 +80,12 @@ impl UiSectionSelection {
 }
 
 struct App {
-    state: SharedState,
+    state: SharedState<'static>,
     selected_section: UiSectionSelection,
 }
 
 impl App {
-    fn new(state: SharedState) -> Self {
+    fn new(state: SharedState<'static>) -> Self {
         Self {
             state,
             selected_section: UiSectionSelection::default(),
@@ -94,7 +94,7 @@ impl App {
 }
 
 trait AppSectionState: std::fmt::Debug {
-    fn render(&mut self, ui: &mut Ui, state: SharedState);
+    fn render(&mut self, ui: &mut Ui, state: SharedState<'static>);
 }
 
 impl eframe::App for App {
@@ -115,7 +115,7 @@ impl eframe::App for App {
             });
 
         egui::TopBottomPanel::top("Header").show(ctx, |ui| {
-            if let Some(r) = self.state.get_read().ok() {
+            if let Some(r) = self.state.0.try_read().ok() {
                 ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
                     egui::Frame::default().inner_margin(4.0).show(ui, |ui| {
                         match r.attached.as_ref() {

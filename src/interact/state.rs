@@ -29,6 +29,9 @@ impl TryFrom<char> for StateInteract {
 }
 
 impl<'i> LspMessageInteract<'i, ()> for StateInteract {
+    fn diagnostics(&self, args: ()) -> Vec<lsp_types::Diagnostic> {
+        vec![]
+    }
     async fn execute_notification(
         &self,
         args: (),
@@ -46,9 +49,6 @@ impl<'i> LspMessageInteract<'i, ()> for StateInteract {
         sender: &mut crate::handle::buffer_operations::BufferOpChannelSender,
     ) -> HandleResult<()> {
         Ok(())
-    }
-    fn n_expected_args(&self) -> usize {
-        1
     }
     #[tracing::instrument("get ex args", skip(w))]
     fn get_execution_args(

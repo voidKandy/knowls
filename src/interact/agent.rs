@@ -14,6 +14,7 @@ use crate::{
     agents::{message_stack_into_marked_string, AgentID, Agents},
     handle::{
         buffer_operations::BufferOperation,
+        diagnostics::LspDiagnostic,
         error::{HandleError, HandleResult},
     },
     state::LspState,
@@ -25,8 +26,8 @@ use espionox::{
 };
 use lsp_server::RequestId;
 use lsp_types::{
-    ApplyWorkspaceEditParams, HoverContents, MessageType, Range, ShowMessageParams, TextEdit, Uri,
-    WorkspaceEdit,
+    ApplyWorkspaceEditParams, Diagnostic, DiagnosticSeverity, HoverContents, MessageType,
+    PublishDiagnosticsParams, Range, ShowMessageParams, TextEdit, Uri, WorkspaceEdit,
 };
 use std::collections::HashMap;
 use tokio::sync::RwLockWriteGuard;
@@ -119,6 +120,23 @@ impl<'i> AgentInteractExArgs<'i> {
 }
 
 impl<'i> LspMessageInteract<'i, AgentInteractExArgs<'i>> for AgentInteract {
+    fn diagnostics(&self, args: AgentInteractExArgs<'i>) -> Vec<Diagnostic> {
+        let mut all_diagnostics = vec![];
+        let severity = Some(DiagnosticSeverity::HINT);
+        let str = match self {
+            Self::Push => "PUSH",
+            Self::Prompt => "PROMPT",
+            Self::RagPrompt => "RAG_PROMPT",
+        };
+        all_diagnostics.push(Diagnostic {
+            range: args.user_input.range,
+            severity,
+            message: format!("{str}"),
+            ..Default::default()
+        });
+
+        all_diagnostics
+    }
     async fn execute_request(
         &self,
         args: AgentInteractExArgs<'i>,
@@ -140,18 +158,14 @@ impl<'i> LspMessageInteract<'i, AgentInteractExArgs<'i>> for AgentInteract {
                         sender.send_operation(message.into()).await?;
                     }
                     Self::Prompt => {
-                        // let (range_of_text, text_for_interact) =
-                        //     comment.text_for_interact().unwrap();
-                        // if text_for_interact.trim().is_empty() {
-                        //     return Ok(());
-                        // }
-
                         let mut changes = HashMap::new();
+                        let mut change_range = args.user_input.range;
+                        change_range.start.character += 2;
 
                         changes.insert(
                             uri.clone(),
                             vec![TextEdit {
-                                range: args.user_input.range,
+                                range: change_range,
                                 new_text: String::new(),
                             }],
                         );
@@ -193,7 +207,6 @@ impl<'i> LspMessageInteract<'i, AgentInteractExArgs<'i>> for AgentInteract {
                                         }
                                         Some(CompletionStreamStatus::Finished) => {
                                             warn!("finished");
-                                            sender.send_work_done_end(Some("Finished")).await?;
                                             break;
                                         }
                                         None => break,
@@ -202,6 +215,7 @@ impl<'i> LspMessageInteract<'i, AgentInteractExArgs<'i>> for AgentInteract {
                                 Err(err) => return Err(HandleError::from(err)),
                             }
                         }
+                        sender.send_work_done_end(Some("Finished")).await?;
 
                         if !whole_message.trim().is_empty() {
                             warn!("whole message: {whole_message}");
@@ -217,7 +231,7 @@ impl<'i> LspMessageInteract<'i, AgentInteractExArgs<'i>> for AgentInteract {
                     Self::RagPrompt => {}
                 }
             }
-            InteractLspRequest::Hover(hover) => {
+            InteractLspRequest::Hover(_hover) => {
                 let stack = Agents::get_last_n_messages(&args.lsp_state.agent, 5);
                 let contents = HoverContents::Scalar(message_stack_into_marked_string(stack));
                 sender
@@ -259,12 +273,6 @@ impl<'i> LspMessageInteract<'i, AgentInteractExArgs<'i>> for AgentInteract {
 
         Ok(())
     }
-    fn n_expected_args(&self) -> usize {
-        match self {
-            AgentInteract::Push => 1,
-            AgentInteract::Prompt | AgentInteract::RagPrompt => 2,
-        }
-    }
     #[tracing::instrument("get ex args", skip(w))]
     fn get_execution_args(
         &self,
@@ -273,14 +281,17 @@ impl<'i> LspMessageInteract<'i, AgentInteractExArgs<'i>> for AgentInteract {
         doc_info: InteractDocumentInfo<'i>,
         args: &Vec<InteractArg>,
     ) -> Option<AgentInteractExArgs<'i>> {
-        assert!(
-            args.len() <= self.n_expected_args(),
-            "Got too many arguments"
-        );
         warn!("args: {args:?}");
 
-        let agent_char = args[0].as_char().expect("first arg is not char");
-        let agent_id = AgentID::from(*agent_char);
+        let agent_char = args[0].as_char().or_else(|| {
+            tracing::error!(
+                "expected to get a char as first argument, instead got: {:#?}",
+                args[0]
+            );
+            None
+        })?;
+
+        let agent_id = AgentID::from((doc_info.uri, *agent_char));
         let document_state = w.documents.get(&doc_info.uri).unwrap().to_owned();
 
         if let Some(agents) = w.agents.as_mut() {
@@ -288,21 +299,46 @@ impl<'i> LspMessageInteract<'i, AgentInteractExArgs<'i>> for AgentInteract {
                 .get_agent_mut(&agent_id)
                 .expect("No agent matching given id");
             let content = match self {
-                Self::Prompt | Self::RagPrompt => args
-                    .into_iter()
-                    .nth(1)
-                    .expect("too little args")
-                    .as_string()
-                    .expect("second arg not string")
-                    .to_string(),
+                Self::Prompt | Self::RagPrompt => {
+                    args.into_iter().skip(1).fold(String::new(), |str, arg| {
+                        if let Some(arg_str) = arg
+                            .as_string()
+                            .and_then(|str| Some(str.to_string()))
+                            .or(arg.as_char().and_then(|ch| Some(ch.to_string())))
+                        {
+                            format!("{str} {arg_str}",)
+                        } else {
+                            str
+                        }
+                    })
+                }
 
-                Self::Push => doc_info
-                    .tokens
-                    .get(doc_info.my_pos + 1)
-                    .expect("No token after push command comment")
-                    .to_string(),
+                Self::Push => {
+                    if let Some(tok) = doc_info.tokens.get(doc_info.my_pos + 1) {
+                        match tok {
+                            Token::Block(content) => {
+                                warn!("Push interact should add {content} to agent context");
+                                content.to_string()
+                            }
+                            _ => {
+                                warn!(
+                                    "Push interact's next token is not a Token::Block, got {}",
+                                    tok.variant_display()
+                                );
+                                String::new()
+                            }
+                        }
+                    } else {
+                        warn!("No token after Push interact");
+                        String::new()
+                    }
+                }
             };
 
+            // this might be BAD
+            if content.is_empty() {
+                warn!("passing empty content to agent interact args");
+            }
             let ex_args = AgentInteractExArgs {
                 lsp_state: AgentInteractLspState {
                     agent,

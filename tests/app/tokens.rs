@@ -92,7 +92,7 @@ use lsp_types::Range;
 
 use super::{InteractError, InteractResult};
 
-// @_ Comment
+// @^ Comment
 pub struct ParsedComment {
     content: String,
     range: Range,
@@ -103,6 +103,12 @@ Multiline
 comment
 */
 pub struct MoreCode;
+
+// +_
+pub struct EvenMoreCode {
+    i: u32,
+    s: &str,
+}
         "#
     .to_owned();
     let ext = "rs";
@@ -124,11 +130,11 @@ pub struct MoreCode;
             Some(Interact::new(
                 InteractVar::AGENT_PROMPT,
                 vec![
-                    InteractArg::Char('_'),
+                    InteractArg::Char('^'),
                     InteractArg::String("Comment".to_string()),
                 ],
             )),
-            " @_ Comment",
+            " @^ Comment",
             Range {
                 start: lsp_types::Position {
                     line: 8,
@@ -164,10 +170,27 @@ pub struct MoreCode;
             },
         )),
         Token::CommentStr,
+        Token::Block(String::from("\npub struct MoreCode;\n\n")),
+        Token::CommentStr,
+        Token::Comment(ParsedComment::new(
+            Some(Interact::new(
+                InteractVar::AGENT_PUSH,
+                vec![InteractArg::Char('_')],
+            )),
+            " +_",
+            Range {
+                start: lsp_types::Position {
+                    line: 20,
+                    character: 3,
+                },
+                end: lsp_types::Position {
+                    line: 20,
+                    character: 6,
+                },
+            },
+        )),
         Token::Block(String::from(
-            r#"
-pub struct MoreCode;
-        "#,
+            "pub struct EvenMoreCode {\n    i: u32,\n    s: &str,\n}\n        ",
         )),
         Token::End,
     ];
@@ -175,7 +198,7 @@ pub struct MoreCode;
     let all = tokens.as_ref().clone().into_iter().zip(expected);
 
     for (token, exp) in all {
-        assert_eq!(token, exp)
+        assert_eq!(exp, token)
     }
 
     let first_parsed_comment: &ParsedComment = tokens.into_iter().next().unwrap().1;

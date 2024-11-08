@@ -22,5 +22,4 @@ async fn main() -> anyhow::Result<()> {
     });
 
     start_lsp().await
-    // espx_app::ui::run_gui(state)
 }

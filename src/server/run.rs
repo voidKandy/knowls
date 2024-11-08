@@ -76,9 +76,7 @@ pub async fn start_lsp() -> anyhow::Result<()> {
     warn!("created socket at: {CLIENT_SOCKET_ADDR}");
     tokio::time::sleep(Duration::from_millis(2000)).await;
 
-    let mut tui_connection = UnixStream::connect(SERVER_SOCKET_ADDR).await?;
-    tui_connection.write_all(b"hello world\n").await.unwrap();
-    tui_connection.flush().await.unwrap();
+    let mut server_connection = UnixStream::connect(SERVER_SOCKET_ADDR).await?;
 
     let text_document_sync = Some(TextDocumentSyncCapability::Options(
         TextDocumentSyncOptions {
@@ -117,7 +115,7 @@ pub async fn start_lsp() -> anyhow::Result<()> {
 
     let initialization_params = connection.initialize(server_capabilities)?;
     main_loop(
-        tui_connection,
+        server_connection,
         unix_listener,
         connection,
         initialization_params,

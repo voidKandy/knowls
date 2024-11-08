@@ -1,5 +1,6 @@
 use super::{
     buffer_operations::{BufferOpChannelHandler, BufferOpChannelSender},
+    diagnostics::LspDiagnostic,
     error::HandleResult,
     BufferOpChannelJoinHandle,
 };
@@ -68,9 +69,6 @@ async fn handle_didChange(
 
     w.update_doc_and_agents_from_text(uri.clone(), &text)?;
 
-    // sender
-    //     .send_operation(LspDiagnostic::diagnose_document(uri, &mut w.store)?.into())
-    //     .await?;
     Ok(())
 }
 
@@ -117,6 +115,9 @@ pub async fn handle_didSave<'s>(
         .send_work_done_report(Some("Updated Document Tokens"), None)
         .await?;
 
+    sender
+        .send_operation(LspDiagnostic::diagnose_document(uri, &mut w)?.into())
+        .await?;
     Ok(())
 }
 
@@ -125,7 +126,7 @@ pub async fn handle_didSave<'s>(
 async fn handle_didOpen(
     noti: Notification,
     state: SharedState<'static>,
-    sender: BufferOpChannelSender,
+    mut sender: BufferOpChannelSender,
 ) -> HandleResult<()> {
     let text_doc_item = serde_json::from_value::<DidOpenTextDocumentParams>(noti.params)?;
     let text = text_doc_item.text_document.text;
@@ -136,5 +137,9 @@ async fn handle_didOpen(
     // let mut w = state.0.try_write()?;
     // this causes a crash?
     // w.update_doc_and_agents_from_text(uri.clone(), text)?;
+
+    sender
+        .send_operation(LspDiagnostic::diagnose_document(uri, &mut w)?.into())
+        .await?;
     Ok(())
 }

@@ -5,7 +5,7 @@ edition = "2021"
 
 [features]
 default = [
-    # "gui"
+    "gui"
 ]
 gui = ["dep:egui", "dep:eframe", "dep:egui_extras"]
 

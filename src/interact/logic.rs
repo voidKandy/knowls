@@ -5,12 +5,14 @@ use super::{
     state::StateInteract,
 };
 use crate::{
-    handle::{buffer_operations::BufferOpChannelSender, error::HandleResult},
+    handle::{
+        buffer_operations::BufferOpChannelSender, diagnostics::LspDiagnostic, error::HandleResult,
+    },
     state::LspState,
 };
 use lsp_server::RequestId;
 use lsp_types::{
-    DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+    Diagnostic, DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
     DocumentDiagnosticParams, GotoDefinitionParams, HoverParams,
 };
 use tokio::sync::RwLockWriteGuard;
@@ -37,7 +39,8 @@ impl InteractVar {
 }
 
 pub trait LspMessageInteract<'i, ARGS>: std::fmt::Debug + Copy {
-    fn n_expected_args(&self) -> usize;
+    fn diagnostics(&self, args: ARGS) -> Vec<Diagnostic>;
+
     fn get_execution_args(
         &self,
         w: &'i mut RwLockWriteGuard<'_, LspState<'static>>,
