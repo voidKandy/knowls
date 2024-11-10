@@ -14,12 +14,14 @@ use tracing::warn;
 #[derive(Debug, ValueEnum, Clone, Deserialize, Serialize)]
 pub enum CliRequest {
     Ping,
+    Report,
     Logs,
 }
 
-#[derive(Debug, ValueEnum, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum CliResponse {
     Ping,
+    Report(String),
 }
 
 impl SocketMessage for CliResponse {}
@@ -60,6 +62,9 @@ pub async fn run_command(command: CliRequest) {
                         CliResponse::Ping => {
                             println!("received a ping");
                         }
+                        CliResponse::Report(report_str) => {
+                            println!("\n____________________________\n{report_str}\n____________________________");
+                        }
                     }
                     break;
                 }
@@ -70,9 +75,10 @@ pub async fn run_command(command: CliRequest) {
             warn!("err connecting: {err:#?}");
         }
     }
+    std::fs::remove_file(CLIENTSIDE_CLI_ADDR).unwrap();
 }
 
-pub async fn from_cli_recv_loop(
+pub async fn handle_cli_req(
     mut stream: UnixStream,
     listener: UnixListener,
     state: SharedState<'static>,
@@ -87,13 +93,44 @@ pub async fn from_cli_recv_loop(
                 let bytes = buf_reader.read_line(&mut buf).await.unwrap();
                 if bytes == 0 {
                     warn!("Closed");
-                    break;
+                    return;
                 }
 
                 if let Some(msg) = serde_json::from_str::<CliRequest>(&buf).ok() {
                     warn!("Rcv: {msg:#?}");
                     match msg {
                         CliRequest::Logs => unreachable!("logs request should never be sent"),
+                        CliRequest::Report => {
+                            let r = state.0.try_read().expect("could not read lock");
+                            let mut report_str = String::new();
+                            if let Some(agents) = &r.agents {
+                                let amt = agents.iter_agents().count();
+                                report_str.push_str(&format!("{amt} Agents\n"));
+                                for (id, agent) in agents.iter_agents() {
+                                    report_str.push_str(&format!(
+                                        "{id:#?} - {} Messages\n",
+                                        agent.cache.len()
+                                    ));
+                                }
+                            }
+
+                            if let Some(db) = &r.database {
+                                match db.thread {
+                                    Some(_) => report_str.push_str(&format!(
+                                        "Database is running\nAddress - {:#?}\nConfig - {:#?}\n",
+                                        db.path, db.config
+                                    )),
+                                    None => report_str.push_str("No Database\n"),
+                                }
+                            }
+                            report_str.push_str(&format!("{} Documents", r.documents.len()));
+                            let bytes = CliResponse::Report(report_str).as_bytes_to_send().unwrap();
+                            stream
+                                .write_all(&bytes)
+                                .await
+                                .expect("failed to send bytes");
+                            stream.flush().await.unwrap();
+                        }
                         CliRequest::Ping => {
                             let response = CliResponse::Ping;
                             let bytes = response
@@ -107,6 +144,7 @@ pub async fn from_cli_recv_loop(
                         }
                     }
                 }
+                return;
             }
             Err(err) => {
                 warn!("error connecting {err:#?}")

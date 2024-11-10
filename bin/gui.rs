@@ -19,7 +19,7 @@ use espx_lsp_server::ui::run_gui;
 #[cfg(feature = "gui")]
 async fn main() -> eframe::Result<()> {
     use espx_lsp_server::sockets::{
-        from_cli_recv_loop, from_relay_recv_loop, init_serverside_listener_and_stream,
+        from_relay_recv_loop, handle_cli_req, init_serverside_listener_and_stream,
         CLIENTSIDE_CLI_ADDR, CLIENTSIDE_RELAY_ADDR, SERVERSIDE_CLI_ADDR, SERVERSIDE_RELAY_ADDR,
     };
 
@@ -43,9 +43,11 @@ async fn main() -> eframe::Result<()> {
     // CLI relay connection
     let cli_thread_state = state.clone();
     tokio::spawn(async move {
-        let (unix_listener, unix_stream) =
-            init_serverside_listener_and_stream(SERVERSIDE_CLI_ADDR, CLIENTSIDE_CLI_ADDR).await;
-        from_cli_recv_loop(unix_stream, unix_listener, cli_thread_state).await
+        loop {
+            let (unix_listener, unix_stream) =
+                init_serverside_listener_and_stream(SERVERSIDE_CLI_ADDR, CLIENTSIDE_CLI_ADDR).await;
+            handle_cli_req(unix_stream, unix_listener, cli_thread_state.clone()).await
+        }
     });
 
     run_gui(state)
