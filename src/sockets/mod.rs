@@ -3,7 +3,7 @@ mod relay;
 mod trace;
 
 pub use self::{
-    cli::{handle_cli_req, run_command, CliRequest, CliResponse},
+    cli::{handle_cli_req, run_command, CliArgs, CliRequest, CliResponse},
     relay::{from_relay_recv_loop, start_lsp_relay},
     trace::{CLI_TRACING, RELAY_TRACING},
 };

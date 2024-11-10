@@ -1,8 +1,13 @@
 use super::{
     init_clientside_listener_and_stream, SocketMessage, CLIENTSIDE_CLI_ADDR, SERVERSIDE_CLI_ADDR,
 };
-use crate::{sockets::trace::CLI_TRACING_LOG_FILE, state::SharedState};
-use clap::ValueEnum;
+use crate::{
+    agents::{AgentID, Agents},
+    sockets::trace::CLI_TRACING_LOG_FILE,
+    state::SharedState,
+};
+use clap::{Parser, Subcommand};
+use lsp_types::{OneOf, Uri};
 use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, fs, path::PathBuf, str::FromStr};
 use tokio::{
@@ -11,26 +16,61 @@ use tokio::{
 };
 use tracing::warn;
 
-#[derive(Debug, ValueEnum, Clone, Deserialize, Serialize)]
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+pub struct CliArgs {
+    #[command(subcommand, name = "cli request")]
+    pub command: CliRequest,
+}
+
+#[derive(Debug, Subcommand, Clone, Deserialize, Serialize)]
 pub enum CliRequest {
     Ping,
     Report,
-    Logs,
+    Logs {
+        #[arg(short = 'c', long)]
+        clear: bool,
+    },
+    Prompt {
+        #[arg(short = 'a', long)]
+        agent_name: String,
+        #[arg(short = 'p', long)]
+        prompt: String,
+    },
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum CliResponse {
     Ping,
     Report(String),
+    AgentResponse(AgentPromptResponse),
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+enum AgentPromptResponse {
+    Ok(String),
+    Err(String),
+}
+
+impl Into<String> for AgentPromptResponse {
+    fn into(self) -> String {
+        match self {
+            Self::Ok(s) => s,
+            Self::Err(s) => s,
+        }
+    }
 }
 
 impl SocketMessage for CliResponse {}
 impl SocketMessage for CliRequest {}
 
 pub async fn run_command(command: CliRequest) {
-    if let CliRequest::Logs = command {
-        let log_file_content =
-            fs::read_to_string(PathBuf::from_str(CLI_TRACING_LOG_FILE).unwrap()).unwrap();
+    if let CliRequest::Logs { clear } = command {
+        let path = PathBuf::from_str(CLI_TRACING_LOG_FILE).unwrap();
+        let log_file_content = fs::read_to_string(&path).unwrap();
+        if clear {
+            fs::write(path, b"").unwrap();
+        }
         println!("{log_file_content}");
         return;
     }
@@ -59,6 +99,9 @@ pub async fn run_command(command: CliRequest) {
                 if let Some(msg) = serde_json::from_str::<CliResponse>(&buf).ok() {
                     warn!("Rcv: {msg:#?}");
                     match msg {
+                        CliResponse::AgentResponse(res) => {
+                            println!("{}", Into::<String>::into(res));
+                        }
                         CliResponse::Ping => {
                             println!("received a ping");
                         }
@@ -99,7 +142,79 @@ pub async fn handle_cli_req(
                 if let Some(msg) = serde_json::from_str::<CliRequest>(&buf).ok() {
                     warn!("Rcv: {msg:#?}");
                     match msg {
-                        CliRequest::Logs => unreachable!("logs request should never be sent"),
+                        CliRequest::Logs { .. } => {
+                            unreachable!("logs request should never be sent")
+                        }
+
+                        CliRequest::Prompt { agent_name, prompt } => {
+                            let mut w = state.0.try_write().expect("could not write lock");
+                            let mut prompt_response = Option::<AgentPromptResponse>::None;
+
+                            let invalid_agent_name_err = |agents: &Agents| -> String {
+                                let mut buffer = String::new();
+                                buffer
+                                    .push_str(&format!("{agent_name} is not a valid agent name\n"));
+                                buffer.push_str("Valid Agent Names:\n");
+                                for (id, _) in agents.iter_agents() {
+                                    buffer.push_str(id.to_string().as_str());
+                                }
+                                buffer
+                            };
+
+                            if let Some(agents) = w.agents.as_mut() {
+                                if let Some(agent) = match agent_name.trim().chars().count().cmp(&1)
+                                {
+                                    std::cmp::Ordering::Less => {
+                                        prompt_response = Some(AgentPromptResponse::Err(
+                                            invalid_agent_name_err(agents),
+                                        ));
+                                        None
+                                    }
+
+                                    std::cmp::Ordering::Equal => {
+                                        let char = agent_name.trim().chars().next().unwrap();
+                                        warn!("agent id char: {char}");
+                                        AgentID::try_from_char(char)
+                                            .and_then(|id| agents.get_agent_mut(id))
+                                    }
+
+                                    std::cmp::Ordering::Greater => {
+                                        match Uri::from_str(&agent_name) {
+                                            Ok(uri) => agents.get_agent_mut(&uri),
+                                            Err(_) => {
+                                                prompt_response = Some(AgentPromptResponse::Err(
+                                                    invalid_agent_name_err(agents),
+                                                ));
+                                                None
+                                            }
+                                        }
+                                    }
+                                } {
+                                    warn!("got agent, prompting....");
+                                    agent
+                                        .cache
+                                        .push(espionox::prelude::Message::new_user(&prompt));
+                                    let a_response = agent
+                                        .io_completion()
+                                        .await
+                                        .expect("failed to get agent io completion");
+                                    prompt_response = Some(AgentPromptResponse::Ok(a_response));
+                                }
+
+                                let response = prompt_response.unwrap_or(AgentPromptResponse::Err(
+                                    String::from("Somehow agent prompt response was empty"),
+                                ));
+                                let bytes = CliResponse::AgentResponse(response)
+                                    .as_bytes_to_send()
+                                    .unwrap();
+                                stream
+                                    .write_all(&bytes)
+                                    .await
+                                    .expect("failed to send bytes");
+                                stream.flush().await.unwrap();
+                            }
+                        }
+
                         CliRequest::Report => {
                             let r = state.0.try_read().expect("could not read lock");
                             let mut report_str = String::new();
