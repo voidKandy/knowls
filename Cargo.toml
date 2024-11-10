@@ -17,6 +17,10 @@ name = "headless"
 path = "bin/headless.rs"
 
 [[bin]]
+name = "cli"
+path = "bin/cli.rs"
+
+[[bin]]
 name = "relay"
 path = "bin/relay.rs"
 

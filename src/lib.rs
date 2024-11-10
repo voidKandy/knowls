@@ -4,7 +4,7 @@ pub mod database;
 pub mod error;
 pub mod handle;
 pub mod interact;
-pub mod server;
+pub mod sockets;
 pub mod state;
 pub mod telemetry;
 #[cfg(feature = "gui")]

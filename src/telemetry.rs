@@ -5,7 +5,7 @@ use tracing_log::LogTracer;
 use tracing_subscriber::{fmt::MakeWriter, layer::SubscriberExt, EnvFilter, Registry};
 
 pub static TRACING: LazyLock<()> = LazyLock::new(|| {
-    let default_filter_level = "debug".to_string();
+    let default_filter_level = "warn".to_string();
     let subscriber_name = "lsp".to_string();
     let sub = get_subscriber(subscriber_name, default_filter_level, std::io::stdout);
     init_subscriber(sub);

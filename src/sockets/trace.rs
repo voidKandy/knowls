@@ -1,6 +1,8 @@
 use clap::Parser;
 use std::{
     fs::File,
+    path::PathBuf,
+    str::FromStr,
     sync::{LazyLock, Mutex},
 };
 use tracing::{subscriber::set_global_default, Subscriber};
@@ -20,6 +22,28 @@ pub struct LspConfig {
     #[clap(short, long, default_value = "DEBUG")]
     pub level: String,
 }
+
+pub const CLI_TRACING_LOG_FILE: &str = "~/.espx_cli/logs.log";
+pub static CLI_TRACING: LazyLock<()> = LazyLock::new(|| {
+    let default_filter_level = "debug".to_string();
+    let subscriber_name = "lsp".to_string();
+
+    if let Some(parent) = PathBuf::from_str(CLI_TRACING_LOG_FILE).unwrap().parent() {
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)
+                .expect("Failed to create parent directory for log file");
+        }
+    }
+
+    let log_file = File::options()
+        .create(true)
+        .append(true)
+        .open(CLI_TRACING_LOG_FILE)
+        .expect("Log file could not be created/referenced");
+
+    let sub = get_subscriber(subscriber_name, default_filter_level, Mutex::new(log_file));
+    init_subscriber(sub);
+});
 
 pub static RELAY_TRACING: LazyLock<()> = LazyLock::new(|| {
     let config = LspConfig::parse();

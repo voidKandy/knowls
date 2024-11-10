@@ -1,12 +1,6 @@
 #![allow(unused)]
 use clap::Parser;
-use espx_lsp_server::{
-    self,
-    config::Config,
-    server::{init_socket_listener_and_stream, unix_socket_loop},
-    state::SharedState,
-    telemetry::TRACING,
-};
+use espx_lsp_server::{self, config::Config, state::SharedState, telemetry::TRACING};
 
 use std::sync::{Arc, LazyLock};
 use tokio::sync::RwLock;
@@ -24,6 +18,11 @@ use espx_lsp_server::ui::run_gui;
 #[tokio::main]
 #[cfg(feature = "gui")]
 async fn main() -> eframe::Result<()> {
+    use espx_lsp_server::sockets::{
+        from_cli_recv_loop, from_relay_recv_loop, init_serverside_listener_and_stream,
+        CLIENTSIDE_CLI_ADDR, CLIENTSIDE_RELAY_ADDR, SERVERSIDE_CLI_ADDR, SERVERSIDE_RELAY_ADDR,
+    };
+
     LazyLock::force(&TRACING);
     let args = Args::parse();
     println!("{args:?}");
@@ -32,11 +31,21 @@ async fn main() -> eframe::Result<()> {
     tracing::warn!("initializing with config: {config:#?}");
     let state = SharedState::init(config).unwrap();
 
-    let unix_thread_state = state.clone();
+    // LSP relay connection
+    let lsp_thread_state = state.clone();
     tokio::spawn(async move {
-        let (unix_listener, unix_stream) = init_socket_listener_and_stream().await;
+        let (unix_listener, unix_stream) =
+            init_serverside_listener_and_stream(SERVERSIDE_RELAY_ADDR, CLIENTSIDE_RELAY_ADDR).await;
         let unix_stream = Arc::new(RwLock::new(unix_stream));
-        unix_socket_loop(unix_stream, unix_listener, unix_thread_state).await
+        from_relay_recv_loop(unix_stream, unix_listener, lsp_thread_state).await
+    });
+
+    // CLI relay connection
+    let cli_thread_state = state.clone();
+    tokio::spawn(async move {
+        let (unix_listener, unix_stream) =
+            init_serverside_listener_and_stream(SERVERSIDE_CLI_ADDR, CLIENTSIDE_CLI_ADDR).await;
+        from_cli_recv_loop(unix_stream, unix_listener, cli_thread_state).await
     });
 
     run_gui(state)
