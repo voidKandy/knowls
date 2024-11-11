@@ -5,29 +5,25 @@ use espx_lsp_server::{self, config::Config, state::SharedState, telemetry::TRACI
 use std::sync::{Arc, LazyLock};
 use tokio::sync::RwLock;
 
-#[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
-struct Args {
-    #[arg(short = 'c', long)]
-    config_file: String,
-}
+#[cfg(feature = "gui")]
+use espx_lsp_server::ui::gui::run_gui;
 
 #[cfg(feature = "gui")]
-use espx_lsp_server::ui::run_gui;
+use espx_lsp_server::{
+    config::GLOBAL_SYS_CONFIG,
+    sockets::{
+        from_relay_recv_loop, init_serverside_listener_and_stream, CLIENTSIDE_CLI_ADDR,
+        CLIENTSIDE_RELAY_ADDR, SERVERSIDE_CLI_ADDR, SERVERSIDE_RELAY_ADDR,
+    },
+};
 
 #[tokio::main]
 #[cfg(feature = "gui")]
 async fn main() -> eframe::Result<()> {
-    use espx_lsp_server::sockets::{
-        from_relay_recv_loop, handle_cli_req, init_serverside_listener_and_stream,
-        CLIENTSIDE_CLI_ADDR, CLIENTSIDE_RELAY_ADDR, SERVERSIDE_CLI_ADDR, SERVERSIDE_RELAY_ADDR,
-    };
+    use espx_lsp_server::sockets::handle_cli_req;
 
     LazyLock::force(&TRACING);
-    let args = Args::parse();
-    println!("{args:?}");
-    let config = Config::init_from_file_path(&args.config_file)
-        .expect("could not get config from given path");
+    let config = Config::init_from_global_config().expect("could not get config from given path");
     tracing::warn!("initializing with config: {config:#?}");
     let state = SharedState::init(config).unwrap();
 
@@ -39,7 +35,6 @@ async fn main() -> eframe::Result<()> {
         let unix_stream = Arc::new(RwLock::new(unix_stream));
         from_relay_recv_loop(unix_stream, unix_listener, lsp_thread_state).await
     });
-
     // CLI relay connection
     let cli_thread_state = state.clone();
     tokio::spawn(async move {
@@ -49,7 +44,6 @@ async fn main() -> eframe::Result<()> {
             handle_cli_req(unix_stream, unix_listener, cli_thread_state.clone()).await
         }
     });
-
     run_gui(state)
 }
 

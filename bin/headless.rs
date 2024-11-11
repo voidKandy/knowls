@@ -2,7 +2,7 @@ use espx_lsp_server::{
     self,
     config::Config,
     sockets::{
-        init_serverside_listener_and_stream, lsp_relay_recv_loop, start_lsp_relay,
+        from_relay_recv_loop, init_serverside_listener_and_stream, start_lsp_relay,
         CLIENTSIDE_RELAY_ADDR, RELAY_TRACING, SERVERSIDE_RELAY_ADDR,
     },
     state::SharedState,
@@ -22,7 +22,7 @@ async fn main() -> anyhow::Result<()> {
         let (unix_listener, unix_stream) =
             init_serverside_listener_and_stream(SERVERSIDE_RELAY_ADDR, CLIENTSIDE_RELAY_ADDR).await;
         let unix_stream = Arc::new(RwLock::new(unix_stream));
-        lsp_relay_recv_loop(unix_stream, unix_listener, unix_thread_state).await
+        from_relay_recv_loop(unix_stream, unix_listener, unix_thread_state).await
     });
 
     start_lsp_relay().await

@@ -2,9 +2,7 @@ pub mod agents;
 pub mod database;
 pub mod espx;
 use agents::{AgentConfig, AgentConfigFromFile, AgentSettings};
-use anyhow::anyhow;
 use database::{DatabaseConfig, DatabaseConfigFromFile};
-use egui::containers;
 use espx::ModelConfig;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -12,6 +10,7 @@ use std::{
     fs::{self},
     path::{Path, PathBuf},
     str::FromStr,
+    sync::LazyLock,
 };
 use toml;
 use tracing::{debug, warn};
@@ -65,6 +64,16 @@ impl From<(ConfigFromFile, PathBuf)> for Config {
     }
 }
 
+pub const GLOBAL_SYS_CONFIG: LazyLock<PathBuf> = LazyLock::new(|| {
+    let home = std::env::var("HOME").expect("No $HOME env variable");
+    let path_str = format!("{home}/.espx/config.toml");
+    let path = PathBuf::from_str(&path_str).expect("could not build path buf");
+    if !path.exists() {
+        panic!("{path:#?} does not exist!");
+    }
+    path
+});
+
 impl Config {
     pub fn init_from_pwd() -> Self {
         let pwd = std::env::current_dir()
@@ -84,23 +93,25 @@ impl Config {
         Config::from((cnfg, pwd))
     }
 
-    pub fn init_from_file_path(path_str: &str) -> anyhow::Result<Self> {
-        let path = PathBuf::from_str(path_str)?;
+    /// returns none if the global config file does not exist
+    pub fn init_from_global_config() -> Option<Self> {
+        let _p = GLOBAL_SYS_CONFIG;
+        let path = LazyLock::force(&_p);
         warn!("Building config from: {path:#?}");
-        let content = fs::read_to_string(path.clone()).unwrap_or(String::new());
+        if !path.exists() {
+            return None;
+        }
+        let content = fs::read_to_string(path.clone()).expect("unexpected error");
         let cnfg: ConfigFromFile = match toml::from_str(&content) {
             Ok(c) => c,
             Err(err) => panic!("CONFIG ERROR: {:?}", err),
         };
 
-        let pwd: PathBuf = Into::<PathBuf>::into(
-            path.parent()
-                .ok_or(anyhow!("config file does not have a parent"))?,
-        )
-        .canonicalize()
-        .expect("could not canonicalize config pwd");
+        let pwd: PathBuf = Into::<PathBuf>::into(path.parent().unwrap())
+            .canonicalize()
+            .expect("could not canonicalize config pwd");
 
-        Ok(Config::from((cnfg, pwd)))
+        Some(Config::from((cnfg, pwd)))
     }
 
     fn espx_ls_dir(&self) -> PathBuf {

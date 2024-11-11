@@ -1,11 +1,10 @@
 mod cli;
 mod relay;
 mod trace;
-
 pub use self::{
-    cli::{handle_cli_req, run_command, CliArgs, CliRequest, CliResponse},
+    cli::{handle_cli_req, send_request, wait_for_response},
     relay::{from_relay_recv_loop, start_lsp_relay},
-    trace::{CLI_TRACING, RELAY_TRACING},
+    trace::{CLI_TRACING, CLI_TRACING_LOG_FILE, RELAY_TRACING},
 };
 use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, path::Path, time::Duration};
