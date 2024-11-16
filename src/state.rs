@@ -69,13 +69,16 @@ impl<'i> LspState<'i> {
             }
         }
 
-        Ok(Self {
+        let state = Self {
             attached: None,
             documents: HashMap::new(),
             // registry,
             database,
             agents,
-        })
+        };
+
+        warn!("initialized state: {state:#?}");
+        Ok(state)
     }
 
     async fn init_database_thread(&mut self) -> StateResult<()> {

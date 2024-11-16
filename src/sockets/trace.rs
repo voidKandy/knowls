@@ -23,12 +23,21 @@ pub struct LspConfig {
     pub level: String,
 }
 
-pub const CLI_TRACING_LOG_FILE: &str = "~/.espx_cli/logs.log";
+pub const CLI_TRACING_LOG_FILE: LazyLock<PathBuf> = LazyLock::new(|| {
+    let home = std::env::var("HOME").expect("No $HOME env variable");
+    let path_str = format!("{home}/.espx/logs.log");
+    let path = PathBuf::from_str(&path_str).expect("could not build path buf");
+    if !path.exists() {
+        std::fs::write(path.clone(), b"").unwrap();
+    }
+    path
+});
+
 pub static CLI_TRACING: LazyLock<()> = LazyLock::new(|| {
     let default_filter_level = "debug".to_string();
     let subscriber_name = "lsp".to_string();
 
-    if let Some(parent) = PathBuf::from_str(CLI_TRACING_LOG_FILE).unwrap().parent() {
+    if let Some(parent) = LazyLock::force(&CLI_TRACING_LOG_FILE).parent() {
         if !parent.exists() {
             std::fs::create_dir_all(parent)
                 .expect("Failed to create parent directory for log file");
@@ -38,7 +47,7 @@ pub static CLI_TRACING: LazyLock<()> = LazyLock::new(|| {
     let log_file = File::options()
         .create(true)
         .append(true)
-        .open(CLI_TRACING_LOG_FILE)
+        .open(LazyLock::force(&CLI_TRACING_LOG_FILE))
         .expect("Log file could not be created/referenced");
 
     let sub = get_subscriber(subscriber_name, default_filter_level, Mutex::new(log_file));

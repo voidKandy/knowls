@@ -116,7 +116,7 @@ impl Config {
 
     fn espx_ls_dir(&self) -> PathBuf {
         let mut path = self.pwd.clone();
-        path.push(PathBuf::from(".espx-ls"));
+        path.push(PathBuf::from("data"));
         debug!("espx ls folder path: {:?}", path);
         if !path.exists() {
             fs::create_dir(&path).expect("failed to make .espx-ls directory");

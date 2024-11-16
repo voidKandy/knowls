@@ -1,11 +1,7 @@
 use super::{
     init_clientside_listener_and_stream, SocketMessage, CLIENTSIDE_CLI_ADDR, SERVERSIDE_CLI_ADDR,
 };
-use crate::{
-    config::GLOBAL_SYS_CONFIG,
-    state::SharedState,
-    ui::cli::{CliRequest, CliResponse},
-};
+use crate::{config::GLOBAL_SYS_CONFIG, state::SharedState};
 use std::sync::LazyLock;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},

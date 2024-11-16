@@ -194,7 +194,7 @@ impl<'i> LspMessageInteract<'i, AgentInteractExArgs<'i>> for AgentInteract {
 
                         let mut whole_message = String::new();
                         loop {
-                            match stream_handler.receive(args.lsp_state.agent).await {
+                            match stream_handler.receive(Some(args.lsp_state.agent)).await {
                                 Ok(status) => {
                                     warn!("STATUS: {status:?}");
                                     match status {
