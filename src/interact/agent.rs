@@ -294,65 +294,64 @@ impl<'i> LspMessageInteract<'i, AgentInteractExArgs<'i>> for AgentInteract {
         let agent_id = AgentID::from((doc_info.uri, *agent_char));
         let document_state = w.documents.get(&doc_info.uri).unwrap().to_owned();
 
-        if let Some(agents) = w.agents.as_mut() {
-            let agent = agents
-                .get_agent_mut(&agent_id)
-                .expect("No agent matching given id");
-            let content = match self {
-                Self::Prompt | Self::RagPrompt => {
-                    args.into_iter().skip(1).fold(String::new(), |str, arg| {
-                        if let Some(arg_str) = arg
-                            .as_string()
-                            .and_then(|str| Some(str.to_string()))
-                            .or(arg.as_char().and_then(|ch| Some(ch.to_string())))
-                        {
-                            format!("{str} {arg_str}",)
-                        } else {
-                            str
-                        }
-                    })
-                }
-
-                Self::Push => {
-                    if let Some(tok) = doc_info.tokens.get(doc_info.my_pos + 1) {
-                        match tok {
-                            Token::Block(content) => {
-                                warn!("Push interact should add {content} to agent context");
-                                content.to_string()
-                            }
-                            _ => {
-                                warn!(
-                                    "Push interact's next token is not a Token::Block, got {}",
-                                    tok.variant_display()
-                                );
-                                String::new()
-                            }
-                        }
+        let agent = w
+            .agents
+            .get_agent_mut(&agent_id)
+            .expect("No agent matching given id");
+        let content = match self {
+            Self::Prompt | Self::RagPrompt => {
+                args.into_iter().skip(1).fold(String::new(), |str, arg| {
+                    if let Some(arg_str) = arg
+                        .as_string()
+                        .and_then(|str| Some(str.to_string()))
+                        .or(arg.as_char().and_then(|ch| Some(ch.to_string())))
+                    {
+                        format!("{str} {arg_str}",)
                     } else {
-                        warn!("No token after Push interact");
-                        String::new()
+                        str
                     }
-                }
-            };
-
-            // this might be BAD
-            if content.is_empty() {
-                warn!("passing empty content to agent interact args");
+                })
             }
-            let ex_args = AgentInteractExArgs {
-                lsp_state: AgentInteractLspState {
-                    agent,
-                    document_state,
-                    uri: doc_info.uri,
-                },
-                user_input: AgentInteractUserInput {
-                    content,
-                    range: interact_comment.range,
-                },
-            };
 
-            return Some(ex_args);
+            Self::Push => {
+                if let Some(tok) = doc_info.tokens.get(doc_info.my_pos + 1) {
+                    match tok {
+                        Token::Block(content) => {
+                            warn!("Push interact should add {content} to agent context");
+                            content.to_string()
+                        }
+                        _ => {
+                            warn!(
+                                "Push interact's next token is not a Token::Block, got {}",
+                                tok.variant_display()
+                            );
+                            String::new()
+                        }
+                    }
+                } else {
+                    warn!("No token after Push interact");
+                    String::new()
+                }
+            }
+        };
+
+        // this might be BAD
+        if content.is_empty() {
+            warn!("passing empty content to agent interact args");
         }
+        let ex_args = AgentInteractExArgs {
+            lsp_state: AgentInteractLspState {
+                agent,
+                document_state,
+                uri: doc_info.uri,
+            },
+            user_input: AgentInteractUserInput {
+                content,
+                range: interact_comment.range,
+            },
+        };
+
+        return Some(ex_args);
         None
     }
 }

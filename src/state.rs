@@ -35,7 +35,7 @@ pub struct LspState<'i> {
     // pub registry: InteractRegistry,
     pub documents: HashMap<Uri, TokenVec<'i>>,
     pub database: Option<Database>,
-    pub agents: Option<Agents>,
+    pub agents: Agents,
 }
 
 impl<'i> LspState<'i> {
@@ -45,7 +45,7 @@ impl<'i> LspState<'i> {
         // if let Some(db) = database.as_mut() {
         //     db.init_handle().await?;
         // }
-        let mut agents = config.model.take().and_then(|cfg| Some(Agents::from(cfg)));
+        let mut agents = Agents::from(config.model.expect("config has no agent information"));
         // let mut registry = InteractRegistry::default();
         if let Some(ref agents_config) = &config.agents {
             for (agent_id, agent_settings) in agents_config.clone().into_iter() {
@@ -54,16 +54,12 @@ impl<'i> LspState<'i> {
                         warn!("Did not expect to encounter a uri agent here, encountered: {uri_str:#?}")
                     }
                     AgentID::Global => {
-                        if let Some(agents) = agents.as_mut() {
-                            let global_agent = agents.get_agent_mut(agent_id).expect("No global?");
-                            agent_settings.change_agent(global_agent);
-                        }
+                        let global_agent = agents.get_agent_mut(agent_id).expect("No global?");
+                        agent_settings.change_agent(global_agent);
                     }
                     AgentID::Char(char) => {
                         // registry.register_scope(&char)?;
-                        if let Some(agents) = agents.as_mut() {
-                            agents.create_custom_agent(char, agent_settings.sys_prompt);
-                        }
+                        agents.create_custom_agent(char, agent_settings.sys_prompt);
                     }
                 }
             }
@@ -93,25 +89,24 @@ impl<'i> LspState<'i> {
 
     pub async fn save_agent_memories_to_database(&self) -> StateResult<()> {
         let mut all_agent_params = vec![];
-        if let Some(agents) = &self.agents {
-            let global_cache = &agents
-                .get_agent_ref(AgentID::Global)
-                .expect("No global agent?")
-                .cache;
-            // let global_char = self
-            //     .registry
-            //     .get_interact_char(GLOBAL_ID)
-            //     .expect("no global agent in registry?");
+        let global_cache = &self
+            .agents
+            .get_agent_ref(AgentID::Global)
+            .expect("No global agent?")
+            .cache;
+        // let global_char = self
+        //     .registry
+        //     .get_interact_char(GLOBAL_ID)
+        //     .expect("no global agent in registry?");
 
-            all_agent_params.push(DBAgentMemoryParams::new(
-                &AgentID::Global,
-                Some(&global_cache),
-            ));
+        all_agent_params.push(DBAgentMemoryParams::new(
+            &AgentID::Global,
+            Some(&global_cache),
+        ));
 
-            for (id, agent) in agents.iter_agents() {
-                let cache = &agent.cache;
-                all_agent_params.push(DBAgentMemoryParams::new(id, Some(&cache)));
-            }
+        for (id, agent) in self.agents.iter_agents() {
+            let cache = &agent.cache;
+            all_agent_params.push(DBAgentMemoryParams::new(id, Some(&cache)));
         }
 
         let db = self
@@ -165,9 +160,7 @@ impl<'i> LspState<'i> {
     }
 
     pub fn update_doc_and_agents_from_text(&mut self, uri: Uri, text: &str) -> StateResult<()> {
-        if let Some(agents) = self.agents.as_mut() {
-            agents.update_or_create_doc_agent(&uri, &text);
-        }
+        self.agents.update_or_create_doc_agent(&uri, &text);
 
         let ext = language_ext_from_uri(&uri);
         let mut lexer = Lexer::new(&text, ext);
@@ -214,12 +207,10 @@ impl<'i> LspState<'i> {
                     }
                 })
             {
-                if let Some(agents) = self.agents.as_mut() {
-                    if let Some(agent) = agents.get_agent_mut(agent_id.as_ref().unwrap()) {
-                        let role = uri_agent_role(&uri);
-                        warn!("wiping messages with role: {role:#?} from agent: {agent_id:#?}");
-                        agent.cache.mut_filter_by(&role, false);
-                    }
+                if let Some(agent) = self.agents.get_agent_mut(agent_id.as_ref().unwrap()) {
+                    let role = uri_agent_role(&uri);
+                    warn!("wiping messages with role: {role:#?} from agent: {agent_id:#?}");
+                    agent.cache.mut_filter_by(&role, false);
                 }
             }
         }

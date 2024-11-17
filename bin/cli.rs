@@ -33,7 +33,7 @@ async fn main() {
         from_relay_recv_loop(unix_stream, unix_listener, lsp_thread_state).await
     });
 
-    if let Some(app) = args.command.handle(state) {
+    if let Some(app) = args.command.handle(state).await {
         warn!("app gotten from command handler");
         app.run(terminal).unwrap();
     }

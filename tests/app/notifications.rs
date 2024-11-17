@@ -33,8 +33,6 @@ async fn handles_didsave_correctly() {
 
     let agent_cache_before = r
         .agents
-        .as_ref()
-        .unwrap()
         .get_agent_ref(AgentID::Global)
         .unwrap()
         .cache
@@ -51,14 +49,7 @@ async fn handles_didsave_correctly() {
         .unwrap();
 
     let r = state.0.try_read().unwrap();
-    let agent_cache_len_after = r
-        .agents
-        .as_ref()
-        .unwrap()
-        .get_agent_ref(AgentID::Global)
-        .unwrap()
-        .cache
-        .len();
+    let agent_cache_len_after = r.agents.get_agent_ref(AgentID::Global).unwrap().cache.len();
     drop(r);
 
     assert_eq!(agent_cache_before.len() + 1, agent_cache_len_after);
@@ -76,8 +67,6 @@ async fn handles_didsave_correctly() {
     warn!("agent cache before: {agent_cache_before:#?}",);
     let agent_cache_after = r
         .agents
-        .as_ref()
-        .unwrap()
         .get_agent_ref(AgentID::Global)
         .unwrap()
         .cache

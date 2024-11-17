@@ -1,4 +1,5 @@
 pub mod new_tui;
+pub mod props;
 // pub mod user_input;
 use crate::{agents::AgentID, sockets::CLI_TRACING_LOG_FILE, state::SharedState};
 use clap::{Parser, Subcommand};
@@ -22,10 +23,7 @@ pub enum CliCommand {
         #[arg(short = 'c', long)]
         clear: bool,
     },
-    Start {
-        #[arg(short = 'a', long)]
-        agent_name: String,
-    },
+    Start,
 }
 
 pub fn string_to_agent_id(agent_name: &str) -> Option<AgentID> {
@@ -47,7 +45,7 @@ pub fn string_to_agent_id(agent_name: &str) -> Option<AgentID> {
 
 impl CliCommand {
     #[tracing::instrument(name = "cli command handler", skip(state))]
-    pub fn handle(self, state: SharedState<'static>) -> Option<Tui> {
+    pub async fn handle(self, state: SharedState<'static>) -> Option<Tui> {
         match self {
             Self::Logs { clear } => {
                 let log_file_content =
@@ -58,9 +56,8 @@ impl CliCommand {
                 println!("{log_file_content}");
                 None
             }
-            Self::Start { agent_name } => {
-                let agent_id = string_to_agent_id(&agent_name).unwrap();
-                let app = Tui::new(state, agent_id);
+            Self::Start => {
+                let app = Tui::new(state).await;
                 Some(app)
             }
         }

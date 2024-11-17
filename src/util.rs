@@ -17,6 +17,13 @@ where
             _ => None,
         }
     }
+    pub fn peek_left_mut(&mut self) -> Option<&mut T> {
+        match self {
+            Self::Left(v) => Some(v),
+            _ => None,
+        }
+    }
+
     pub fn take_left(self) -> Option<T> {
         match self {
             Self::Left(v) => Some(v),
@@ -24,6 +31,13 @@ where
         }
     }
     pub fn peek_right(&self) -> Option<&O> {
+        match self {
+            Self::Right(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    pub fn peek_right_mut(&mut self) -> Option<&mut O> {
         match self {
             Self::Right(v) => Some(v),
             _ => None,
