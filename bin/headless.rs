@@ -15,7 +15,7 @@ async fn main() -> anyhow::Result<()> {
     LazyLock::force(&RELAY_TRACING);
     let config = Config::init_from_pwd();
     tracing::warn!("initializing with config: {config:#?}");
-    let state = SharedState::init(config).unwrap();
+    let state = SharedState::init(config).await.unwrap();
 
     let unix_thread_state = state.clone();
     tokio::spawn(async move {

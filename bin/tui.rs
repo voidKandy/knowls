@@ -6,7 +6,7 @@ use espx_lsp_server::{
         CLI_TRACING, SERVERSIDE_RELAY_ADDR,
     },
     state::SharedState,
-    ui::cli::CliArgs,
+    ui::tui::cli::CliArgs,
 };
 use std::sync::{Arc, LazyLock};
 use tokio::sync::RwLock;
@@ -22,7 +22,7 @@ async fn main() {
 
     let config = Config::init_from_global_config().expect("could not get config from given path");
     tracing::warn!("initializing with config: {config:#?}");
-    let state = SharedState::init(config).unwrap();
+    let state = SharedState::init(config).await.unwrap();
 
     // LSP relay connection
     let lsp_thread_state = state.clone();

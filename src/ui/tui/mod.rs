@@ -1,30 +1,22 @@
-use crate::{
-    agents::AgentID,
-    state::{LspState, SharedState},
-    util::OneOf,
-};
-use color_eyre::{owo_colors::OwoColorize, Result};
+pub mod cli;
+pub mod props;
+use crate::state::SharedState;
+use color_eyre::Result;
 use crossterm::event::KeyEvent;
-use lsp_types::Uri;
+use props::{agents::AgentProps, database::DBProps, docs::DocsProps, global::GlobalProps, TuiProp};
 use ratatui::{
     crossterm::{
         self,
         event::{Event, KeyCode},
     },
-    layout::{Constraint, Layout, Rect},
+    layout::{Constraint, Flex, Layout, Rect},
     style::{Color, Style, Stylize},
     text::{Line, Text},
-    widgets::{Block, Borders, HighlightSpacing, List, ListItem, Paragraph},
+    widgets::{Block, Clear, Paragraph},
     DefaultTerminal, Frame,
 };
-use std::{collections::HashMap, time::Duration};
-use throbber_widgets_tui::{Throbber, ThrobberState};
-use tokio::sync::RwLockReadGuard;
+use std::time::Duration;
 use tracing::warn;
-
-use super::props::{
-    agents::AgentProps, database::DBProps, docs::DocsProps, global::GlobalProps, TuiProp,
-};
 
 #[derive(Debug, PartialEq, Eq, Default)]
 pub enum CurrentPane {
@@ -36,6 +28,19 @@ pub enum CurrentPane {
     DB,
 }
 
+impl ToString for CurrentPane {
+    fn to_string(&self) -> String {
+        match self {
+            Self::DB => "Database",
+            Self::Global => "Global",
+            Self::Agents => "Agents",
+            Self::Docs => "Documents",
+            Self::Normal => "Home",
+        }
+        .to_string()
+    }
+}
+
 struct TuiProps {
     agents_props: AgentProps,
     docs_props: DocsProps,
@@ -45,6 +50,7 @@ struct TuiProps {
 
 pub struct Tui {
     props: TuiProps,
+    show_help: bool,
     current_pane: CurrentPane,
     state: SharedState<'static>,
     should_quit: bool,
@@ -64,6 +70,7 @@ impl Tui {
 
         Self {
             current_pane: CurrentPane::default(),
+            show_help: false,
             props,
             state,
             should_quit: false,
@@ -72,7 +79,26 @@ impl Tui {
 
     fn handle_key_event(&mut self, event: KeyEvent) {
         warn!("handling key event: {event:#?}");
+        if self.show_help && event.code == KeyCode::Char('q') {
+            self.show_help = false;
+            return;
+        }
+        if event.code == KeyCode::Char('?') {
+            self.show_help = true;
+        }
         match self.current_pane {
+            _ if self.current_pane == AgentProps::select_me().1 => {
+                AgentProps::handle_keyevent(self, event).expect("failed to handle key event");
+            }
+            _ if self.current_pane == DBProps::select_me().1 => {
+                DBProps::handle_keyevent(self, event).expect("failed to handle key event");
+            }
+            _ if self.current_pane == DocsProps::select_me().1 => {
+                DocsProps::handle_keyevent(self, event).expect("failed to handle key event");
+            }
+            _ if self.current_pane == GlobalProps::select_me().1 => {
+                GlobalProps::handle_keyevent(self, event).expect("failed to handle key event");
+            }
             CurrentPane::Normal => match event.code {
                 _ if event.code == AgentProps::select_me().0 => {
                     self.current_pane = AgentProps::select_me().1;
@@ -91,12 +117,7 @@ impl Tui {
                 }
                 _ => {}
             },
-            _ => match event.code {
-                KeyCode::Esc => {
-                    self.current_pane = CurrentPane::Normal;
-                }
-                _ => {}
-            },
+            _ => {}
         }
     }
 
@@ -184,5 +205,41 @@ impl Tui {
             frame,
             global_area,
         );
+
+        if self.show_help {
+            let block = Block::bordered().fg(Color::Yellow).title("Help");
+            let area = help_popup(frame.area(), 60, 20);
+            frame.render_widget(Clear, area); //this clears out the background
+            let lines: Vec<Line> = vec![
+                Line::from(vec![
+                    format!(" {} ", AgentProps::select_me().0).bold(),
+                    format!("to select {}", AgentProps::select_me().1.to_string()).into(),
+                ]),
+                Line::from(vec![
+                    format!(" {} ", DBProps::select_me().0).bold().into(),
+                    format!("to select {}", DBProps::select_me().1.to_string()).into(),
+                ]),
+                Line::from(vec![
+                    format!(" {} ", DocsProps::select_me().0).bold().into(),
+                    format!("to select {}", DocsProps::select_me().1.to_string()).into(),
+                ]),
+                Line::from(vec![
+                    format!(" {} ", GlobalProps::select_me().0).bold().into(),
+                    format!("to select {}", GlobalProps::select_me().1.to_string()).into(),
+                ]),
+            ];
+
+            let paragraph = Paragraph::new(lines).block(block);
+            frame.render_widget(paragraph, area);
+        }
     }
+}
+
+fn help_popup(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
+    let vertical = Layout::vertical([Constraint::Percentage(percent_y)]).flex(Flex::Center);
+    let horizontal = Layout::horizontal([Constraint::Percentage(percent_x)]).flex(Flex::Center);
+
+    let [area] = vertical.areas(area);
+    let [area] = horizontal.areas(area);
+    area
 }

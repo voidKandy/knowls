@@ -40,13 +40,14 @@ pub struct LspState<'i> {
 
 impl<'i> LspState<'i> {
     #[tracing::instrument(name = "initializing state")]
-    pub fn new(mut config: Config) -> anyhow::Result<Self> {
-        let database = Database::new(&config);
-        // if let Some(db) = database.as_mut() {
-        //     db.init_handle().await?;
-        // }
+    pub async fn new(config: Config) -> anyhow::Result<Self> {
+        let mut database = Database::new(&config);
+        if let Some(db) = database.as_mut() {
+            db.init_thread()
+                .await
+                .expect("failed to init database thread");
+        }
         let mut agents = Agents::from(config.model.expect("config has no agent information"));
-        // let mut registry = InteractRegistry::default();
         if let Some(ref agents_config) = &config.agents {
             for (agent_id, agent_settings) in agents_config.clone().into_iter() {
                 match agent_id {
@@ -75,16 +76,6 @@ impl<'i> LspState<'i> {
 
         warn!("initialized state: {state:#?}");
         Ok(state)
-    }
-
-    async fn init_database_thread(&mut self) -> StateResult<()> {
-        if let Some(db) = self.database.as_mut() {
-            warn!("Initializing db thread");
-            db.init_thread().await?;
-        } else {
-            warn!("No database present");
-        }
-        Ok(())
     }
 
     pub async fn save_agent_memories_to_database(&self) -> StateResult<()> {
@@ -235,8 +226,8 @@ impl<'i> Clone for SharedState<'i> {
 }
 
 impl<'i> SharedState<'i> {
-    pub fn init(config: Config) -> anyhow::Result<Self> {
-        Ok(Self(Arc::new(RwLock::new(LspState::new(config)?))))
+    pub async fn init(config: Config) -> anyhow::Result<Self> {
+        Ok(Self(Arc::new(RwLock::new(LspState::new(config).await?))))
     }
     // pub fn get_read(&self) -> anyhow::Result<RwLockReadGuard<'_, LspState>> {
     //     match self.0.try_read() {

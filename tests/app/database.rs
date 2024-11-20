@@ -18,7 +18,7 @@ use tracing::warn;
 #[tokio::test]
 async fn health_test() {
     LazyLock::force(&TEST_TRACING);
-    let mut state = test_state(true);
+    let mut state = test_state(true).await;
     let mut w = state.0.try_write().unwrap();
     w.database.as_mut().unwrap().init_thread().await.unwrap();
     if let Err(err) = w
@@ -109,7 +109,7 @@ async fn health_test() {
 #[tokio::test]
 async fn tokens_crud_test() {
     LazyLock::force(&TEST_TRACING);
-    let mut state = test_state(true);
+    let mut state = test_state(true).await;
     let mut w = state.0.try_write().unwrap();
     let all_test_docs = vec![
         test_doc_1(),
@@ -252,7 +252,7 @@ async fn tokens_crud_test() {
 #[tokio::test]
 async fn memories_crud_test() {
     LazyLock::force(&TEST_TRACING);
-    let mut state = test_state(true);
+    let mut state = test_state(true).await;
     let mut w = state.0.try_write().unwrap();
 
     let db = w.database.as_mut().unwrap();

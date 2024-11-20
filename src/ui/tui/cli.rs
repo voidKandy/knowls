@@ -1,14 +1,11 @@
-pub mod new_tui;
-pub mod props;
-// pub mod user_input;
 use crate::{agents::AgentID, sockets::CLI_TRACING_LOG_FILE, state::SharedState};
 use clap::{Parser, Subcommand};
 use lsp_types::Uri;
-use new_tui::Tui;
 use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, fs, str::FromStr, sync::LazyLock};
 use tracing::warn;
-// use user_input::ChatApp;
+
+use super::Tui;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]

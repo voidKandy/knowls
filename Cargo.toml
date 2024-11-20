@@ -17,8 +17,8 @@ name = "headless"
 path = "bin/headless.rs"
 
 [[bin]]
-name = "cli"
-path = "bin/cli.rs"
+name = "tui"
+path = "bin/tui.rs"
 
 [[bin]]
 name = "relay"
@@ -57,7 +57,7 @@ egui = { version = "0.29.1", optional = true }
 eframe = { version = "0.29.1", optional = true }
 egui_extras = { version = "0.29.1", optional = true }
 
-# TO be added to the cli feature
+# TO be added to the tui feature
 ratatui = { version = "0.29.0", features = ["crossterm"] }
 color-eyre = "0.6.3"
 crossterm = { version = "0.28.1", features = ["event-stream"] }

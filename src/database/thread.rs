@@ -65,11 +65,8 @@ impl DatabaseThread {
                 .spawn()
                 .expect("Failed to run database start command");
             let stdout = child.stdout.take().expect("Could not take child stdout");
-            // let client = Self::init_client(&config, &database_path)
-            // .await;
             sender
                 .send(DatabaseThreadMessage::Info { stdout })
-                // .await
                 .expect("Could not send child stdout and client");
             child
         });

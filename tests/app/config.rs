@@ -56,8 +56,8 @@ fn pwd() -> PathBuf {
     std::env::current_dir().unwrap().canonicalize().unwrap()
 }
 
-#[test]
-fn config_builds_correctly() {
+#[tokio::test]
+async fn config_builds_correctly() {
     let mut agents: AgentConfig = HashMap::new();
     agents.insert(AgentID::Char('c'), AgentSettings::default());
     agents.insert(
@@ -97,7 +97,7 @@ fn config_builds_correctly() {
 
     assert_eq!(expected, cfg);
 
-    let state = LspState::new(cfg).unwrap();
+    let state = LspState::new(cfg).await.unwrap();
     let global_agent = state
         .agents
         .as_ref()

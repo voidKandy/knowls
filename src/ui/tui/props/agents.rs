@@ -8,8 +8,25 @@ use ratatui::{
 };
 
 pub struct AgentProps {
-    pub current_agent: Option<AgentID>,
+    pub current_agent: usize,
     pub all_agents: Vec<AgentID>,
+}
+
+impl AgentProps {
+    fn prev_agent(&mut self) {
+        if self.current_agent == 0 {
+            self.current_agent = self.all_agents.len() - 1;
+        } else {
+            self.current_agent -= 1;
+        }
+    }
+    fn next_agent(&mut self) {
+        if self.current_agent == self.all_agents.len() - 1 {
+            self.current_agent = 0;
+        } else {
+            self.current_agent += 1;
+        }
+    }
 }
 
 impl TuiProp for AgentProps {
@@ -23,17 +40,29 @@ impl TuiProp for AgentProps {
     fn select_me() -> (crossterm::event::KeyCode, super::CurrentPane) {
         (KeyCode::Char('a'), CurrentPane::Agents)
     }
-    async fn handle_keyevent(
-        tui: &mut crate::ui::cli::new_tui::Tui,
+    fn handle_keyevent(
+        tui: &mut crate::ui::tui::Tui,
         event: crossterm::event::KeyEvent,
     ) -> anyhow::Result<()> {
+        match event.code {
+            KeyCode::Esc => {
+                tui.current_pane = CurrentPane::Normal;
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                tui.props.agents_props.next_agent();
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                tui.props.agents_props.prev_agent();
+            }
+            _ => {}
+        }
         Ok(())
     }
     async fn from_state_read(
         r: &tokio::sync::RwLockReadGuard<'_, crate::state::LspState<'static>>,
     ) -> Self {
         AgentProps {
-            current_agent: None,
+            current_agent: 0,
             all_agents: r.agents.iter_agents().map(|(id, _)| id.clone()).collect(),
         }
     }
@@ -46,14 +75,11 @@ impl TuiProp for AgentProps {
         let items: Vec<ListItem> = self
             .all_agents
             .iter()
-            .map(|agent_id| {
+            .enumerate()
+            .map(|(i, agent_id)| {
                 let mut color = Color::Cyan;
 
-                if self
-                    .current_agent
-                    .as_ref()
-                    .is_some_and(|current| agent_id == current)
-                {
+                if self.current_agent == i {
                     color = Color::LightMagenta;
                 }
 

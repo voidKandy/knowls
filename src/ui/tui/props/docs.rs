@@ -27,10 +27,16 @@ impl TuiProp for DocsProps {
     fn select_me() -> (crossterm::event::KeyCode, super::CurrentPane) {
         (KeyCode::Char('d'), CurrentPane::Docs)
     }
-    async fn handle_keyevent(
-        tui: &mut crate::ui::cli::new_tui::Tui,
+    fn handle_keyevent(
+        tui: &mut crate::ui::tui::Tui,
         event: crossterm::event::KeyEvent,
     ) -> anyhow::Result<()> {
+        match event.code {
+            KeyCode::Esc => {
+                tui.current_pane = CurrentPane::Normal;
+            }
+            _ => {}
+        }
         Ok(())
     }
     async fn from_state_read(
