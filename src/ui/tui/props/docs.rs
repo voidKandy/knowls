@@ -1,15 +1,11 @@
+use super::{CurrentPane, TuiProp};
 use crossterm::event::KeyCode;
 use lsp_types::Uri;
 use ratatui::{
-    style::{Color, Style, Stylize},
-    text::{Line, Text},
-    widgets::{Block, Borders, HighlightSpacing, List, ListItem, Paragraph},
+    style::{Color, Stylize},
+    text::Line,
+    widgets::{Block, Borders, HighlightSpacing, List, ListItem},
 };
-use throbber_widgets_tui::ThrobberState;
-
-use crate::util::OneOf;
-
-use super::{CurrentPane, TuiProp};
 
 pub struct DocsProps {
     pub current_doc: Option<Uri>,
@@ -39,6 +35,12 @@ impl TuiProp for DocsProps {
         }
         Ok(())
     }
+
+    fn run(&mut self, state_ref: &mut crate::state::SharedState<'static>) {
+        let r = state_ref.0.try_read().unwrap();
+        self.all_docs = r.documents.keys().map(|k| k.to_owned()).collect();
+    }
+
     async fn from_state_read(
         r: &tokio::sync::RwLockReadGuard<'_, crate::state::LspState<'static>>,
     ) -> Self {
