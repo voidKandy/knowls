@@ -4,14 +4,66 @@
 `esp_ls` utilizes the [language server protocol](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/) to provide an interface for interacting with language models. This is done through a command line tool like syntax within the comments of your code. The syntax is structured as follows: 
 `<languge comment syntax> <command> <agent> option<args>`
 
-## GUI or Headless
-If you build the `headless` binary, the LSP will attach to your editor's LSP client without you needing to do anything. 
-The `relay` binary is used specifically for using the GUI. The relay will attach to your editor's LSP client and *relay* all LSP JSON RPC messages from your editor to the running GUI. To run the GUI, run the `gui` binary in the `bin` folder. It requires that you pass a path to `espx-ls.toml` file with the `--config-file` or `-c` flag. If you are within the base of this directory simply running: 
-```bash
-cargo run --bin gui --features "gui" -- -c ./testing/espx-ls.toml
-```
-will get the GUI going (assuming you have created the `espx-ls.toml` file)
+## Configuration
+Eventually this will be automated, but in order to get the LSP to attach within one of your projects, you must create the directory `$HOME/.espx`, and place a config file at `$HOME/.espx/config.toml`. The `[model]` section is required, all other sections are optional.
+#### [model] 
+* provider: either `Anthropic` or `OpenAi`
+* api_key: an api for the corresponding provider
 
+**Example:**
+```toml
+[model]
+provider = "Anthropic"
+api_key = "your_api_key_here"
+```
+
+#### [database] 
+Include this if you would like to use the [surrealdb](https://github.com/surrealdb/surrealdb) integration. This will **CREATE** a database instance in the root of your project in the `.espx-ls` directory and does not require that you set one up yourself. 
+* namespace: the namespace of the database
+* database: the name of the database
+* user: username for database access
+* pass: password for database access
+
+**Example:**
+```toml
+[database]
+namespace = "espx"
+database = "espx"
+user = "root"
+pass = "root"
+```
+#### [agents]
+For defining custom agents, you can also adjust the global agent by using it's character (`_`).
+
+**Example:**
+```toml
+[agents]
+  [agents.c]
+  [agents.b]
+    sys_prompt = "Your prompt for agent B"
+```
+> **Note:** In the example above, agent `c` will use the default assistant prompt, while agent `b` will utilize the specified system prompt. Both agents can be accessed like any other agent. For instance, to prompt the model in agent `c`, you would use: `@c your prompt.`
+
+
+## Relay or Headless
+There are two options for binaries to run when your editor's LSP client gets upand running: **Headless** and **Relay**. Before building either of these, make sure to go into `build.sh` and change the `TARGET_BIN` to a folder within your `$PATH`, this should be suffixed by the name of the `espx-ls` binary.
+> For example, if you would like to put the resulting binary directly into your `$HOME/.local/bin`, make sure to set `TARGET_BIN` to `$HOME/.local/bin/espx-ls`.
+
+Once you have made the required changes to `build.sh`, build either **headless** or **relay** by running: 
+```bash
+./build.sh <headless/relay>
+```
+### Headless
+If you build the **headless** binary this means your LSP client will boot up the server containing your agents, documents and database connection. If you quit your editor, the server will also quit.
+
+### Relay
+If you build the **relay** binary, it expects a server to be running on your computer. This will simply *relay* LSP JSON RPC messages from your editor to the process running the server. So, you will need to run the `tui` binary in the `bin` folder to use alongside the relay.
+```bash
+cargo run --bin tui
+```
+
+> **IMPORTANT**:
+> Check the [Editor Setup](#neovim-setup), you will notice that NeoVim looks for a file called `.espx`. This is temporary, but until I find out a language agnostic way to find the root of a project this file will need to be included in the root of your project if you want the LSP to connect.
 ## Usage
 ### Agents 
 > Additional agents can be added manually by the user, followed up in the [configuration section](#configuration).
@@ -59,46 +111,6 @@ Currently there are two supported commands:
     ```
     >**NOTE:** In the example above, only the `SomeStruct` definition and its `impl` block will be pushed to the model's context. This is because the Push command only includes the code block that immediately follows it. Code blocks are separated by blank lines.
 
-## Configuration
-In order to get the LSP to attach within one of your projects, you must create an `espx-ls.toml` file in the root of the project. The `[model]` section is required, all other sections are optional.
-#### [model] 
-* provider: either `Anthropic` or `OpenAi`
-* api_key: an api for the corresponding provider
-
-**Example:**
-```toml
-[model]
-provider = "Anthropic"
-api_key = "your_api_key_here"
-```
-
-#### [database] 
-Include this if you would like to use the [surrealdb](https://github.com/surrealdb/surrealdb) integration. This will **CREATE** a database instance in the root of your project in the `.espx-ls` directory and does not require that you set one up yourself. 
-* namespace: the namespace of the database
-* database: the name of the database
-* user: username for database access
-* pass: password for database access
-
-**Example:**
-```toml
-[database]
-namespace = "espx"
-database = "espx"
-user = "root"
-pass = "root"
-```
-#### [agents]
-for defining custom agents
-
-**Example:**
-```toml
-[agents]
-  [agents.c]
-  [agents.b]
-    sys_prompt = "Your prompt for agent B"
-```
->**Note:** In the example above, agent `c` will use the default assistant prompt, while agent `b` will utilize the specified system prompt. Both agents can be accessed like any other agent. For instance, to prompt the model in agent `c`, you would use: `@c your prompt.`
-
 
 # IDE setup
 As of right now I only know how to get this working in NeoVim ¯\_(ツ)\_/¯
@@ -122,7 +134,8 @@ if not configs.espx_ls then
       cmd = { 'espx-ls' },
       filetypes = { 'text', 'rust' },
       root_dir = function()
-        return vim.fs.dirname(vim.fs.find({ 'espx-ls.toml' }, { upward = true })[1])
+        -- this markerfile should be put in the root directory of any project you want to use with this LSP
+        return vim.fs.dirname(vim.fs.find({ '.espx' }, { upward = true })[1])
       end
     },
   }
@@ -155,6 +168,5 @@ From here you should be good to go!
 
 If you have any questions, suggestions, or anything at all feel free to reach out to me at [voidkandy@gmail.com](mailto:voidkandy@gmail.com)
 
-## [Contributing](/docs/contributing.md)
 
 > Thanks to thePrimagen for making his [HTMX LSP](https://github.com/ThePrimeagen/htmx-lsp) Open Source so I could fork it and build it into this :D
