@@ -3,12 +3,6 @@ name = "espx_lsp_server"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-default = [
-    # "gui",
-]
-gui = ["dep:egui", "dep:eframe", "dep:egui_extras"]
-
 [lib]
 path="src/lib.rs"
  
@@ -24,9 +18,6 @@ path = "bin/tui.rs"
 name = "relay"
 path = "bin/relay.rs"
 
-[[bin]]
-name = "gui"
-path = "bin/gui.rs"
 
 [dependencies]
 anyhow = "1.0.86"
@@ -53,11 +44,6 @@ serde_json = "1.0.117"
 serde = "1.0.203"
 base64 = "0.22.1"
 
-egui = { version = "0.29.1", optional = true }
-eframe = { version = "0.29.1", optional = true }
-egui_extras = { version = "0.29.1", optional = true }
-
-# TO be added to the tui feature
 ratatui = { version = "0.29.0", features = ["crossterm"] }
 color-eyre = "0.6.3"
 crossterm = { version = "0.28.1", features = ["event-stream"] }
