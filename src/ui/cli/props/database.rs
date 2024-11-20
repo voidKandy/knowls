@@ -1,3 +1,5 @@
+use super::{CurrentPane, TaskingProp, TuiProp};
+use crate::util::OneOf;
 use crossterm::event::KeyCode;
 use ratatui::{
     style::{Color, Style, Stylize},
@@ -7,14 +9,12 @@ use ratatui::{
 use throbber_widgets_tui::{Throbber, ThrobberState};
 use tokio::sync::oneshot::{error::TryRecvError, Receiver};
 
-use crate::util::OneOf;
-
-use super::{CurrentPane, TuiProp};
-
 #[derive(Debug)]
 enum DBPropMessage {
     DatabaseHealth(bool),
 }
+unsafe impl Send for DBPropMessage {}
+unsafe impl Sync for DBPropMessage {}
 
 pub struct DBProps {
     pub healthy: OneOf<bool, throbber_widgets_tui::ThrobberState>,
@@ -22,22 +22,15 @@ pub struct DBProps {
     task: Option<tokio::task::JoinHandle<()>>,
 }
 
-impl DBProps {
-    fn start_task<ARGS, F, T>(&mut self, args: ARGS, f: F)
-    where
-        ARGS: Sync + Send + 'static,
-        F: FnOnce(ARGS) -> T + Sync + Send + 'static, // closure accepts arguments of type ARGS
-        T: std::future::Future<Output = Result<DBPropMessage, anyhow::Error>> + Send + 'static, // T must be a Future
-    {
-        if self.task.is_some() {
-            panic!("tried to schedule a task before one finished");
-        }
-        let (tx, rcv) = tokio::sync::oneshot::channel::<DBPropMessage>();
-        self.task_recv = Some(rcv);
-        tokio::spawn(async move {
-            let message = f(args).await.unwrap();
-            tx.send(message).unwrap();
-        });
+impl TaskingProp<DBPropMessage> for DBProps {
+    fn task(&mut self) -> &mut Option<tokio::task::JoinHandle<()>> {
+        &mut self.task
+    }
+    fn set_task(&mut self, handle: tokio::task::JoinHandle<()>) {
+        self.task = Some(handle);
+    }
+    fn set_recv(&mut self, recv: Receiver<DBPropMessage>) {
+        self.task_recv = Some(recv);
     }
 }
 
