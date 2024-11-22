@@ -83,11 +83,10 @@ impl TuiProp for AgentProps {
                     color = Color::LightMagenta;
                 }
 
-                ListItem::from(agent_id.to_string()).bg(color)
+                ListItem::from(agent_id.to_string()).fg(color)
             })
             .collect();
 
-        // Create a List from all list items and highlight the currently selected one
         let list = List::new(items)
             .block(block)
             // .highlight_style(SELECTED_STYLE)
