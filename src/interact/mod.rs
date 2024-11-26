@@ -1,9 +1,9 @@
 pub mod agent;
+pub mod database;
 mod error;
 pub mod execution;
 pub(super) mod logic;
 pub mod parsing;
-pub mod state;
 
 pub use error::{InteractError, InteractResult};
 pub use logic::{

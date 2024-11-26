@@ -39,24 +39,3 @@ pub fn string_to_agent_id(agent_name: &str) -> Option<AgentID> {
         },
     }
 }
-
-impl CliCommand {
-    #[tracing::instrument(name = "cli command handler", skip(state))]
-    pub async fn handle(self, state: SharedState<'static>) -> Option<Tui> {
-        match self {
-            Self::Logs { clear } => {
-                let log_file_content =
-                    fs::read_to_string(LazyLock::force(&CLI_TRACING_LOG_FILE)).unwrap();
-                if clear {
-                    fs::write(LazyLock::force(&CLI_TRACING_LOG_FILE), b"").unwrap();
-                }
-                println!("{log_file_content}");
-                None
-            }
-            Self::Start => {
-                let app = Tui::new(state).await;
-                Some(app)
-            }
-        }
-    }
-}

@@ -34,7 +34,7 @@ impl<'i> ParsedComment<'i> {
                         all_diagnostics.append(&mut i.diagnostics(args));
                     }
                 }
-                InteractVar::State(i) => {
+                InteractVar::DB(i) => {
                     if let Some(args) =
                         i.get_execution_args(w, &self, doc_info, &interact.parsed_args)
                     {
@@ -68,20 +68,16 @@ impl<'i> ParsedComment<'i> {
             sender.send_work_done_report(Some(&report), None).await?;
 
             match interact.variant {
-                InteractVar::State(state_interact) => {
+                InteractVar::DB(db_int) => {
                     if let Some(args) =
-                        state_interact.get_execution_args(w, self, doc_info, &interact.parsed_args)
+                        db_int.get_execution_args(w, self, doc_info, &interact.parsed_args)
                     {
                         match message {
                             InteractLspMessage::Req { body, id } => {
-                                state_interact
-                                    .execute_request(args, id, body, sender)
-                                    .await?;
+                                db_int.execute_request(args, id, body, sender).await?;
                             }
                             InteractLspMessage::Noti(noti) => {
-                                state_interact
-                                    .execute_notification(args, noti, sender)
-                                    .await?;
+                                db_int.execute_notification(args, noti, sender).await?;
                             }
                         }
                     }

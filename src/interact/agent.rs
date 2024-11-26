@@ -14,7 +14,6 @@ use crate::{
     agents::{message_stack_into_marked_string, AgentID, Agents},
     handle::{
         buffer_operations::BufferOperation,
-        diagnostics::LspDiagnostic,
         error::{HandleError, HandleResult},
     },
     state::LspState,
@@ -26,8 +25,8 @@ use espionox::{
 };
 use lsp_server::RequestId;
 use lsp_types::{
-    ApplyWorkspaceEditParams, Diagnostic, DiagnosticSeverity, HoverContents, MessageType,
-    PublishDiagnosticsParams, Range, ShowMessageParams, TextEdit, Uri, WorkspaceEdit,
+    ApplyWorkspaceEditParams, Diagnostic, DiagnosticSeverity, HoverContents, MessageType, Range,
+    ShowMessageParams, TextEdit, Uri, WorkspaceEdit,
 };
 use std::collections::HashMap;
 use tokio::sync::RwLockWriteGuard;
@@ -119,7 +118,7 @@ impl<'i> AgentInteractExArgs<'i> {
     }
 }
 
-impl<'i> LspMessageInteract<'i, AgentInteractExArgs<'i>> for AgentInteract {
+impl<'i, 'g> LspMessageInteract<'i, 'g, AgentInteractExArgs<'i>> for AgentInteract {
     fn diagnostics(&self, args: AgentInteractExArgs<'i>) -> Vec<Diagnostic> {
         let mut all_diagnostics = vec![];
         let severity = Some(DiagnosticSeverity::HINT);
@@ -137,6 +136,7 @@ impl<'i> LspMessageInteract<'i, AgentInteractExArgs<'i>> for AgentInteract {
 
         all_diagnostics
     }
+
     async fn execute_request(
         &self,
         args: AgentInteractExArgs<'i>,
@@ -273,10 +273,11 @@ impl<'i> LspMessageInteract<'i, AgentInteractExArgs<'i>> for AgentInteract {
 
         Ok(())
     }
+
     #[tracing::instrument("get ex args", skip(w))]
     fn get_execution_args(
         &self,
-        w: &'i mut RwLockWriteGuard<'_, LspState<'static>>,
+        w: &'i mut RwLockWriteGuard<'g, LspState<'static>>,
         interact_comment: &'i ParsedComment<'_>,
         doc_info: InteractDocumentInfo<'i>,
         args: &Vec<InteractArg>,

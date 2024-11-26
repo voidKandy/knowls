@@ -9,7 +9,7 @@ fn main() {
     println!("{raw}");
 }
 
-// +_
+// %s
 struct ToBePushed {
     x: u32,
 }

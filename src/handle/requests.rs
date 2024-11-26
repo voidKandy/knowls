@@ -52,7 +52,7 @@ pub async fn handle_request(
 #[tracing::instrument(name = "goto def", skip_all)]
 pub async fn handle_goto_definition(
     req: Request,
-    mut state: SharedState<'static>,
+    state: SharedState<'static>,
     mut sender: BufferOpChannelSender,
 ) -> HandleResult<()> {
     let params = serde_json::from_value::<GotoDefinitionParams>(req.params)?;
@@ -76,9 +76,7 @@ pub async fn handle_goto_definition(
 
     let (comment, idx) = match doc_tokens.comment_in_position(&position) {
         Some((com, i)) => (com.clone(), i),
-        None => {
-            return Err(anyhow!("no comment at gotodef position").into());
-        }
+        None => return Ok(()),
     };
 
     let request = Into::<InteractLspRequest>::into(params);

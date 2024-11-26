@@ -1,8 +1,8 @@
 use super::{
     agent::AgentInteract,
+    database::DBInteract,
     execution::InteractDocumentInfo,
     parsing::{comments::ParsedComment, tokens::TokenVec},
-    state::StateInteract,
 };
 use crate::{
     handle::{
@@ -28,22 +28,22 @@ pub struct Interact<'i> {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum InteractVar {
     Agent(AgentInteract),
-    State(StateInteract),
+    DB(DBInteract),
 }
 
 impl InteractVar {
     pub const AGENT_PUSH: Self = Self::Agent(AgentInteract::Push);
     pub const AGENT_PROMPT: Self = Self::Agent(AgentInteract::Prompt);
     pub const AGENT_RAG_PROMPT: Self = Self::Agent(AgentInteract::RagPrompt);
-    pub const DATABASE_STATE: Self = Self::State(StateInteract::Database);
+    pub const DATABASE_STATE: Self = Self::DB(DBInteract);
 }
 
-pub trait LspMessageInteract<'i, ARGS>: std::fmt::Debug + Copy {
+pub trait LspMessageInteract<'i, 'g, ARGS>: std::fmt::Debug + Copy {
     fn diagnostics(&self, args: ARGS) -> Vec<Diagnostic>;
 
     fn get_execution_args(
         &self,
-        w: &'i mut RwLockWriteGuard<'_, LspState<'static>>,
+        w: &'i mut RwLockWriteGuard<'g, LspState<'static>>,
         interact_comment: &'i ParsedComment<'_>,
         doc_info: InteractDocumentInfo<'i>,
         args: &Vec<InteractArg>,
@@ -69,6 +69,7 @@ pub enum InteractArg {
     Char(char),
     String(String),
 }
+
 impl InteractArg {
     pub fn as_char(&self) -> Option<&char> {
         match self {
@@ -163,7 +164,7 @@ impl<'i> Interact<'i> {
 
         let (is_agent_int, is_state_int) = (
             AgentInteract::try_from(command_char).is_ok(),
-            StateInteract::try_from(command_char).is_ok(),
+            DBInteract::try_from(command_char).is_ok(),
         );
 
         if !is_agent_int && !is_state_int {
@@ -197,7 +198,7 @@ impl<'i> Interact<'i> {
 
         let variant = {
             if is_state_int {
-                InteractVar::State(StateInteract::try_from(command_char).unwrap())
+                InteractVar::DB(DBInteract::try_from(command_char).unwrap())
             } else if is_agent_int {
                 InteractVar::Agent(AgentInteract::try_from(command_char).unwrap())
             } else {

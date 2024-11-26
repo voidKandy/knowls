@@ -3,7 +3,7 @@ use espx_lsp_server::{
     config::Config,
     sockets::{
         from_relay_recv_loop, init_serverside_listener_and_stream, start_lsp_relay,
-        CLIENTSIDE_RELAY_ADDR, RELAY_TRACING, SERVERSIDE_RELAY_ADDR,
+        CLIENTSIDE_RELAY_ADDR, CLI_TRACING, SERVERSIDE_RELAY_ADDR,
     },
     state::SharedState,
 };
@@ -12,7 +12,7 @@ use tokio::sync::RwLock;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    LazyLock::force(&RELAY_TRACING);
+    LazyLock::force(&CLI_TRACING);
     let config = Config::init_from_global_config().expect("failed to build config");
     tracing::warn!("initializing with config: {config:#?}");
     let state = SharedState::init(config).await.unwrap();

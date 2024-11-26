@@ -3,7 +3,6 @@ pub mod models;
 mod thread;
 use std::path::PathBuf;
 
-// pub mod vector_search;
 use self::error::DatabaseResult;
 use crate::config::{database::DatabaseConfig, Config};
 use serde::Deserialize;
@@ -15,7 +14,6 @@ pub struct Database {
     pub config: DatabaseConfig,
     pub path: PathBuf,
     pub thread: Option<DatabaseThread>,
-    // pub client: Surreal<Db>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -32,6 +30,7 @@ impl Database {
             thread: None,
         })
     }
+
     #[tracing::instrument(name = "initialize database connection", skip_all)]
     pub async fn init_thread(&mut self) -> DatabaseResult<()> {
         let thread = DatabaseThread::try_init(

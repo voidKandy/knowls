@@ -37,15 +37,14 @@ impl DatabaseThread {
 
         let address = format!("{LOCALHOST}:{}", config.port);
         let database_path_arg = format!("rocksdb://{database_path}");
-        // let (user, pass) = (config.user.to_owned(), config.pass.to_owned());
+
         warn!("spawning database thread handle..");
         let handle = std::thread::spawn(move || {
             sender
                 .send(DatabaseThreadMessage::Opened)
-                // .await
                 .expect("failed to send");
             warn!("Spinning up database in child process with address: {address}");
-            // warn!("Spinning up database in child process with address: {address}");
+
             let mut child = Command::new("surreal")
                 .args([
                     "start",
@@ -61,9 +60,9 @@ impl DatabaseThread {
                     &database_path_arg,
                 ])
                 .stdout(Stdio::piped())
-                // .output()
                 .spawn()
                 .expect("Failed to run database start command");
+
             let stdout = child.stdout.take().expect("Could not take child stdout");
             sender
                 .send(DatabaseThreadMessage::Info { stdout })
@@ -129,7 +128,7 @@ impl DatabaseThread {
         client
     }
 
-    pub(super) async fn kill(self) -> Result<(), std::io::Error> {
+    pub(crate) async fn kill(self) -> Result<(), std::io::Error> {
         self.child_handle.join().unwrap().kill()?;
         Ok(())
     }
