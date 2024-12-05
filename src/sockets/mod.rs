@@ -1,4 +1,4 @@
-// mod cli;
+mod queue;
 mod relay;
 mod trace;
 pub use self::{

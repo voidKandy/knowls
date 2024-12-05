@@ -112,7 +112,7 @@ pub async fn handle_didSave<'s>(
     }
 
     sender
-        .send_work_done_report(Some("Updated Document Tokens"), None)
+        .send_work_done_end(Some("Updated Document Tokens"))
         .await?;
 
     sender

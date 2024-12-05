@@ -98,12 +98,7 @@ async fn config_builds_correctly() {
     assert_eq!(expected, cfg);
 
     let state = LspState::new(cfg).await.unwrap();
-    let global_agent = state
-        .agents
-        .as_ref()
-        .unwrap()
-        .get_agent_ref(AgentID::Global)
-        .unwrap();
+    let global_agent = state.agents.get_agent_ref(AgentID::Global).unwrap();
     let global_agent_sys_prompt_content = global_agent.cache.ref_system_prompt_content().unwrap();
     assert_eq!(global_agent_sys_prompt_content, "you are batman");
 }

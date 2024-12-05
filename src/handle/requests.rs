@@ -76,7 +76,10 @@ pub async fn handle_goto_definition(
 
     let (comment, idx) = match doc_tokens.comment_in_position(&position) {
         Some((com, i)) => (com.clone(), i),
-        None => return Ok(()),
+        None => {
+            warn!("tried to activate goto-def where there was no comment");
+            return Ok(());
+        }
     };
 
     let request = Into::<InteractLspRequest>::into(params);
@@ -117,7 +120,8 @@ pub async fn handle_hover(
     let (comment, idx) = match doc_tokens.comment_in_position(&position) {
         Some((com, i)) => (com.clone(), i),
         None => {
-            return Err(anyhow!("no comment at gotodef position").into());
+            warn!("tried to activate hover where there was no comment");
+            return Ok(());
         }
     };
 

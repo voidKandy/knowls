@@ -116,6 +116,27 @@ pub(super) const COMMENT_EXTENSION_MAP: LazyLock<HashMap<&str, CommentStrInfo>> 
         );
 
         map.insert(
+            "ts",
+            CommentStrInfo {
+                singleline: "//",
+                multiline: Some(MultilineCommentInfo {
+                    start: "/*",
+                    end: "*/",
+                }),
+            },
+        );
+
+        map.insert(
+            "tsx",
+            CommentStrInfo {
+                singleline: "//",
+                multiline: Some(MultilineCommentInfo {
+                    start: "/*",
+                    end: "*/",
+                }),
+            },
+        );
+        map.insert(
             "py",
             CommentStrInfo {
                 singleline: "#",
