@@ -59,7 +59,6 @@ impl<'i> LspState<'i> {
                         agent_settings.change_agent(global_agent);
                     }
                     AgentID::Char(char) => {
-                        // registry.register_scope(&char)?;
                         agents.create_custom_agent(char, agent_settings.sys_prompt);
                     }
                 }
@@ -69,7 +68,6 @@ impl<'i> LspState<'i> {
         let state = Self {
             attached: None,
             documents: HashMap::new(),
-            // registry,
             database,
             agents,
         };

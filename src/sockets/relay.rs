@@ -33,7 +33,6 @@ pub async fn from_relay_recv_loop(
                 warn!("relay connected: {addr:?}");
                 let unix_stream = Arc::clone(&shared_stream);
                 state.0.try_write().unwrap().attached = Some(addr);
-                // let state = state.clone();
 
                 let thread_running = Arc::new(RwLock::new(true));
                 let shared_message_queue = Arc::new(RwLock::new(vec![]));
@@ -57,7 +56,6 @@ pub async fn from_relay_recv_loop(
                         }
                         buf.clear();
                     }
-                    // state.0.try_write().unwrap().attached = None;
                 });
 
                 loop {
@@ -96,6 +94,7 @@ pub async fn from_relay_recv_loop(
                         }
                     } else if !*thread_running.read().await {
                         warn!("relay receive thread stopped");
+                        state.0.try_write().unwrap().attached = None;
                         break;
                     }
                 }
