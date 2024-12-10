@@ -1,16 +1,13 @@
 use super::{
     execution::InteractDocumentInfo,
-    logic::{InteractArg, InteractVar, LspMessageInteract},
-    parsing::{comments::ParsedComment, tokens::TokenVec},
+    logic::{InteractArg, LspMessageInteract},
+    parsing::comments::ParsedComment,
     InteractLspRequest,
 };
 use crate::{
-    config::database::DatabaseConfig,
-    database::Database,
     handle::{buffer_operations::BufferOperation, error::HandleResult},
-    state::{LspState, SharedState},
+    state::LspState,
 };
-use color_eyre::owo_colors::OwoColorize;
 use lsp_server::RequestId;
 use lsp_types::{
     Diagnostic, DiagnosticSeverity, HoverContents, MessageType, Range, ShowMessageParams,
@@ -30,15 +27,6 @@ enum DBInteractTyp {
     Kill,
     Status,
 }
-
-// impl<'i> From<&'i Database> for DBInfo<'i> {
-//     fn from(value: &'i Database) -> Self {
-//         Self {
-//             config: &value.config,
-//             running: value.thread.is_some(),
-//         }
-//     }
-// }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DBInteract;
@@ -151,73 +139,80 @@ port: {}
                     })
                     .await?;
             }
-            InteractLspRequest::GotoDef(_goto) => match args.typ {
-                t @ DBInteractTyp::Init | t @ DBInteractTyp::Kill => match args.state_guard {
-                    None => {
+
+            InteractLspRequest::GotoDef(_goto) => {
+                warn!("activating gotodef for database interact");
+                match args.typ {
+                    t @ DBInteractTyp::Init | t @ DBInteractTyp::Kill => {
+                        match args.state_guard {
+                            None => {
+                                let message = ShowMessageParams {
+                                    typ: MessageType::WARNING,
+                                    message: format!(
+                                        "This command does nothing when there isn't a DB present"
+                                    ),
+                                };
+
+                                sender.send_operation(message.into()).await?;
+                            }
+                            Some(w) => {
+                                if let Some(db) = w.database.as_mut() {
+                                    match t {
+                                        DBInteractTyp::Init => {
+                                            if db.thread.is_none() {
+                                                let message = match db.init_thread().await {
+                                                    Ok(_) => {
+                                                        "Successfully initialized Database thread!"
+                                                            .to_string()
+                                                    }
+                                                    Err(e) => {
+                                                        format!(
+                                                    "Failed to initialize database thread: {e:#?}"
+                                                )
+                                                    }
+                                                };
+                                                let message = ShowMessageParams {
+                                                    typ: MessageType::INFO,
+                                                    message,
+                                                };
+
+                                                sender.send_operation(message.into()).await?;
+                                            }
+                                        }
+                                        DBInteractTyp::Kill => {
+                                            if let Some(th) = db.thread.take() {
+                                                let message = match th.kill().await {
+                                                    Ok(_) => "Successfully killed Database thread!"
+                                                        .to_string(),
+                                                    Err(e) => {
+                                                        format!("Failed to kill database thread: {e:#?}")
+                                                    }
+                                                };
+                                                let message = ShowMessageParams {
+                                                    typ: MessageType::INFO,
+                                                    message,
+                                                };
+
+                                                sender.send_operation(message.into()).await?;
+                                            }
+                                        }
+                                        _ => unreachable!(),
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    DBInteractTyp::Status => {
                         let message = ShowMessageParams {
-                            typ: MessageType::WARNING,
-                            message: format!(
-                                "This command does nothing when there isn't a DB present"
-                            ),
+                            typ: MessageType::INFO,
+                            message: format!("Status command has no GOTO function"),
                         };
 
                         sender.send_operation(message.into()).await?;
                     }
-                    Some(w) => {
-                        if let Some(db) = w.database.as_mut() {
-                            match t {
-                                DBInteractTyp::Init => {
-                                    if db.thread.is_none() {
-                                        let message = match db.init_thread().await {
-                                            Ok(_) => "Successfully initialized Database thread!"
-                                                .to_string(),
-                                            Err(e) => {
-                                                format!(
-                                                    "Failed to initialize database thread: {e:#?}"
-                                                )
-                                            }
-                                        };
-                                        let message = ShowMessageParams {
-                                            typ: MessageType::INFO,
-                                            message,
-                                        };
-
-                                        sender.send_operation(message.into()).await?;
-                                    }
-                                }
-                                DBInteractTyp::Kill => {
-                                    if let Some(th) = db.thread.take() {
-                                        let message = match th.kill().await {
-                                            Ok(_) => {
-                                                "Successfully killed Database thread!".to_string()
-                                            }
-                                            Err(e) => {
-                                                format!("Failed to kill database thread: {e:#?}")
-                                            }
-                                        };
-                                        let message = ShowMessageParams {
-                                            typ: MessageType::INFO,
-                                            message,
-                                        };
-
-                                        sender.send_operation(message.into()).await?;
-                                    }
-                                }
-                                _ => unreachable!(),
-                            }
-                        }
-                    }
-                },
-
-                DBInteractTyp::Status => {
-                    let message = ShowMessageParams {
-                        typ: MessageType::INFO,
-                        message: format!("Status command has no GOTO function"),
-                    };
-
-                    sender.send_operation(message.into()).await?;
                 }
-            },
+            }
             _ => {}
         }
         Ok(())

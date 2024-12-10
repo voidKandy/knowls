@@ -65,7 +65,7 @@ impl<'i> ParsedComment<'i> {
                 interact.variant
             );
 
-            sender.send_work_done_report(Some(&report), None).await?;
+            sender.send_work_done_end(Some(&report)).await?;
 
             match interact.variant {
                 InteractVar::DB(db_int) => {

@@ -33,8 +33,13 @@ pub async fn from_relay_recv_loop(
                 warn!("relay connected: {addr:?}");
                 let unix_stream = Arc::clone(&shared_stream);
                 state.0.try_write().unwrap().attached = Some(addr);
-                let state = state.clone();
+                // let state = state.clone();
 
+                let thread_running = Arc::new(RwLock::new(true));
+                let shared_message_queue = Arc::new(RwLock::new(vec![]));
+                let thread_message_queue = Arc::clone(&shared_message_queue);
+
+                let thread_running_clone = Arc::clone(&thread_running);
                 tokio::spawn(async move {
                     let mut buf_reader = BufReader::new(stream);
                     let mut buf = String::new();
@@ -42,45 +47,58 @@ pub async fn from_relay_recv_loop(
                         let bytes = buf_reader.read_line(&mut buf).await.unwrap();
                         if bytes == 0 {
                             warn!("Closed");
+                            *thread_running_clone.write().await = true;
                             break;
                         }
 
                         if let Some(msg) = serde_json::from_str::<lsp_server::Message>(&buf).ok() {
                             warn!("Rcv: {msg:#?}");
-                            match match msg {
-                                lsp_server::Message::Notification(not) => {
-                                    handle::notifications::handle_notification(not, state.clone())
-                                        .await
-                                }
-                                lsp_server::Message::Request(req) => {
-                                    handle::requests::handle_request(req, state.clone()).await
-                                }
-                                _ => Err(anyhow!("No handler for responses").into()),
-                            } {
-                                Ok(mut buffer_op_channel_handler) => {
-                                    while let Some(status) =
-                                        buffer_op_channel_handler.receiver.recv().await
-                                    {
-                                        match status.unwrap() {
-                                            BufferOpChannelStatus::Finished => break,
-                                            BufferOpChannelStatus::Working(buffer_op) => {
-                                                buffer_op
-                                                    .do_operation(Arc::clone(&unix_stream))
-                                                    .await
-                                                    .unwrap();
-                                            }
-                                        }
-                                    }
-                                }
-                                Err(err) => {
-                                    warn!("error in handler: {}", err);
-                                }
-                            }
+                            thread_message_queue.write().await.push(msg);
                         }
                         buf.clear();
                     }
-                    state.0.try_write().unwrap().attached = None;
+                    // state.0.try_write().unwrap().attached = None;
                 });
+
+                loop {
+                    if let Some(next_msg) = shared_message_queue.write().await.pop() {
+                        match match next_msg {
+                            lsp_server::Message::Notification(not) => {
+                                handle::notifications::handle_notification(not, state.clone()).await
+                            }
+                            lsp_server::Message::Request(req) => {
+                                if req.method.as_str() == "shutdown" {
+                                    warn!("shutting down server");
+                                    return;
+                                }
+                                handle::requests::handle_request(req, state.clone()).await
+                            }
+                            _ => Err(anyhow!("No handler for responses").into()),
+                        } {
+                            Ok(mut buffer_op_channel_handler) => {
+                                while let Some(status) =
+                                    buffer_op_channel_handler.receiver.recv().await
+                                {
+                                    match status.unwrap() {
+                                        BufferOpChannelStatus::Finished => break,
+                                        BufferOpChannelStatus::Working(buffer_op) => {
+                                            buffer_op
+                                                .do_operation(Arc::clone(&unix_stream))
+                                                .await
+                                                .unwrap();
+                                        }
+                                    }
+                                }
+                            }
+                            Err(err) => {
+                                warn!("error in handler: {}", err);
+                            }
+                        }
+                    } else if !*thread_running.read().await {
+                        warn!("relay receive thread stopped");
+                        break;
+                    }
+                }
             }
             Err(err) => {
                 warn!("error connecting {err:#?}")
