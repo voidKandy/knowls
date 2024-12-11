@@ -31,7 +31,6 @@ impl QueryBuilder {
     pub fn push(&mut self, query: &str) {
         self.0 = format!("{} {}", self.0, query);
     }
-    #[tracing::instrument(name = "ending transaction building", skip(self))]
     pub fn end(mut self) -> String {
         self.push("COMMIT TRANSACTION;");
         tracing::warn!("TRANSACTION STRING: {}", self.0);

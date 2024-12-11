@@ -13,9 +13,11 @@ use tokio::sync::RwLock;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     LazyLock::force(&CLI_TRACING);
+    tracing::warn!("spinning up headless Language Server");
     let config = Config::init_from_global_config().expect("failed to build config");
     tracing::warn!("initializing with config: {config:#?}");
     let state = SharedState::init(config).await.unwrap();
+    tracing::warn!("succesfully created shared state instance");
 
     let unix_thread_state = state.clone();
     tokio::spawn(async move {

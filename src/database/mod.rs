@@ -43,6 +43,7 @@ impl Database {
         .await?;
 
         self.thread = Some(thread);
+        tracing::warn!("database connection created");
 
         Ok(())
     }

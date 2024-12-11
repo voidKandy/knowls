@@ -39,14 +39,14 @@ pub struct LspState<'i> {
 }
 
 impl<'i> LspState<'i> {
-    #[tracing::instrument(name = "initializing state")]
+    #[tracing::instrument(name = "initializing state", skip_all)]
     pub async fn new(config: Config) -> anyhow::Result<Self> {
         let mut database = Database::new(&config);
-        // if let Some(db) = database.as_mut() {
-        //     db.init_thread()
-        //         .await
-        //         .expect("failed to init database thread");
-        // }
+        if let Some(db) = database.as_mut() {
+            db.init_thread()
+                .await
+                .expect("failed to init database thread");
+        }
         let mut agents = Agents::from(config.model.expect("config has no agent information"));
         if let Some(ref agents_config) = &config.agents {
             for (agent_id, agent_settings) in agents_config.clone().into_iter() {
@@ -83,10 +83,6 @@ impl<'i> LspState<'i> {
             .get_agent_ref(AgentID::Global)
             .expect("No global agent?")
             .cache;
-        // let global_char = self
-        //     .registry
-        //     .get_interact_char(GLOBAL_ID)
-        //     .expect("no global agent in registry?");
 
         all_agent_params.push(DBAgentMemoryParams::new(
             &AgentID::Global,
@@ -224,6 +220,7 @@ impl<'i> Clone for SharedState<'i> {
 }
 
 impl<'i> SharedState<'i> {
+    #[tracing::instrument(name = "initializing shared state", skip_all)]
     pub async fn init(config: Config) -> anyhow::Result<Self> {
         Ok(Self::new(LspState::new(config).await?))
     }

@@ -71,7 +71,6 @@ impl DatabaseThread {
         });
         warn!("spawned database instance thread");
 
-        let client = Self::init_client(&config, &database_path).await;
         loop {
             match recv.try_recv() {
                 Ok(msg) => match msg {
@@ -81,6 +80,7 @@ impl DatabaseThread {
                     }
                     DatabaseThreadMessage::Info { stdout } => {
                         warn!("recieved stdout handle, returning DatabaseThread");
+                        let client = Self::init_client(&config, &database_path).await;
                         return Ok(Self {
                             child_handle: handle,
                             stdout,
@@ -103,6 +103,7 @@ impl DatabaseThread {
         }
     }
 
+    #[tracing::instrument(name = "initializing database client")]
     async fn init_client(config: &DatabaseConfig, path: &str) -> Surreal<Db> {
         let default_user = Root {
             username: &config.user,
@@ -111,9 +112,42 @@ impl DatabaseThread {
         warn!("initializing db client with default user {default_user:#?}");
         let db_config = surrealdb::opt::Config::new().user(default_user);
 
-        let client = Surreal::new::<RocksDb>((path, db_config))
-            .await
-            .expect("failed to create client");
+        let mut client_result = Surreal::new::<RocksDb>((path, db_config.clone())).await;
+
+        let mut tried_fix_error = false;
+        let mut client_opt = Option::<Surreal<Db>>::None;
+
+        // BAD
+        // I hate this but idk what to do to remove this LOCK
+        loop {
+            match client_result {
+                Err(ref err) => {
+                    tracing::error!("encountered error when creating surreal client: {err:#?}");
+                    if !tried_fix_error {
+                        if let surrealdb::Error::Db(ref db_err) = err {
+                            if let surrealdb::error::Db::Tx(tx_err) = db_err {
+                                if tx_err.contains("LOCK") {
+                                    tracing::error!("Lock issue expected, deleting lock file...");
+                                    std::fs::remove_file(format!("{path}/LOCK"))
+                                        .expect("failed to remove lockfile");
+                                    tried_fix_error = true;
+                                    client_result =
+                                        Surreal::new::<RocksDb>((path, db_config.clone())).await;
+                                }
+                            }
+                        }
+                    } else {
+                        break;
+                    }
+                }
+                Ok(client) => {
+                    client_opt = Some(client);
+                    break;
+                }
+            }
+        }
+
+        let client = client_opt.expect("could not build client");
 
         client.signin(default_user).await.expect("failed sign in");
         warn!("successfully signed client in");
