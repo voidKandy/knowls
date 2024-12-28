@@ -7,7 +7,7 @@ use crate::{
     handle::{buffer_operations::BufferOpChannelSender, error::HandleResult},
     state::LspState,
 };
-use lsp_types::{Diagnostic, MessageType, ShowMessageParams, Uri};
+use lsp_types::{Diagnostic, Uri};
 use tokio::sync::RwLockWriteGuard;
 
 #[derive(Debug)]

@@ -240,6 +240,8 @@ impl<'input> Lexer<'input> {
     }
 }
 mod tests {
+    use std::collections::HashSet;
+
     use super::Lexer;
 
     #[test]

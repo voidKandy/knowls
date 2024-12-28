@@ -1,5 +1,6 @@
 pub mod config;
 pub mod database;
+pub mod embeddings;
 pub mod helpers;
 pub mod notifications;
 pub mod requests;
