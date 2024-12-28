@@ -1,6 +1,5 @@
 use super::{DatabaseStruct, IntoOneOf};
-use crate::{agents::AgentID, database::error::DatabaseError, util::OneOf};
-use anyhow::anyhow;
+use crate::{agents::AgentID, other_err, util::OneOf, MainErr, MainResult};
 use base64::{prelude::BASE64_URL_SAFE_NO_PAD, Engine};
 use espionox::{
     agents::memory::MessageStackRef,
@@ -25,7 +24,7 @@ pub enum DBAgentID {
 }
 
 impl TryFrom<Thing> for DBAgentID {
-    type Error = anyhow::Error;
+    type Error = MainErr;
     fn try_from(value: Thing) -> Result<Self, Self::Error> {
         match value.id {
             surrealdb::sql::Id::String(string) => {
@@ -36,7 +35,7 @@ impl TryFrom<Thing> for DBAgentID {
                     Ok(Self::EncodedUri(string))
                 }
             }
-            other => Err(anyhow!("{other:?} cannot be turned into an AgentID")),
+            other => Err(other_err!("{other:?} cannot be turned into an AgentID")),
         }
     }
 }
@@ -78,7 +77,7 @@ impl ToString for DBAgentID {
 }
 
 impl DBAgentID {
-    fn decode_uri(&self) -> anyhow::Result<Option<Uri>> {
+    fn decode_uri(&self) -> MainResult<Option<Uri>> {
         if let Self::EncodedUri(encoded) = self {
             let uri_str = BASE64_URL_SAFE_NO_PAD
                 .decode(encoded)?
@@ -130,9 +129,7 @@ impl<'l> DatabaseStruct<'l, DBAgentMemoryParams<'l>> for DBAgentMemory {
         &self.id
     }
 
-    fn content(
-        oneof: &'l impl IntoOneOf<'l, Self, DBAgentMemoryParams<'l>>,
-    ) -> crate::database::error::DatabaseResult<String> {
+    fn content(oneof: &'l impl IntoOneOf<'l, Self, DBAgentMemoryParams<'l>>) -> MainResult<String> {
         match IntoOneOf::<Self, DBAgentMemoryParams>::one_of(oneof) {
             OneOf::Left(me) => Ok(format!(
                 r#"CONTENT {{
@@ -157,12 +154,13 @@ impl<'l> DatabaseStruct<'l, DBAgentMemoryParams<'l>> for DBAgentMemory {
         }
     }
 
-    fn upsert(params: &DBAgentMemoryParams) -> crate::database::error::DatabaseResult<String> {
+    fn upsert(params: &DBAgentMemoryParams) -> MainResult<String> {
         if params.messages.is_none() {
-            return Err(DatabaseError::DbStruct(format!(
+            return Err(other_err!(
                 "All fields need to be Some for a create statement, got: {:?} {:?} ",
-                params.id, params.messages,
-            )));
+                params.id,
+                params.messages,
+            ));
         }
 
         let id = params.id.to_string();

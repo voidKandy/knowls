@@ -3,8 +3,8 @@ use crate::{
     database::error::DatabaseError,
     interact::parsing::tokens::{Token, TokenVec},
     util::OneOf,
+    MainErr,
 };
-use anyhow::anyhow;
 use base64::{prelude::BASE64_URL_SAFE_NO_PAD, Engine};
 use lsp_types::Uri;
 use serde::{Deserialize, Serialize};
@@ -34,11 +34,15 @@ pub struct DBBlockParams {
 }
 
 impl TryFrom<Thing> for DBBlockID {
-    type Error = anyhow::Error;
+    type Error = MainErr;
     fn try_from(value: Thing) -> Result<Self, Self::Error> {
         match value.id {
             surrealdb::sql::Id::String(string) => Ok(Self(string)),
-            _ => Err(anyhow!("{:#?} cannot be turned into a DBBlockID", value.id)),
+            _ => Err(std::io::Error::other(format!(
+                "{:#?} cannot be turned into a DBBlockID",
+                value.id
+            ))
+            .into()),
         }
     }
 }
@@ -53,7 +57,7 @@ impl From<(&Uri, usize)> for DBBlockID {
 }
 
 impl TryInto<(Uri, usize)> for DBBlockID {
-    type Error = anyhow::Error;
+    type Error = MainErr;
     fn try_into(self) -> Result<(Uri, usize), Self::Error> {
         let doc_idx: usize = self.0[..=0].parse()?;
         let rest = &self.0[1..];

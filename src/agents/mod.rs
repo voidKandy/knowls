@@ -1,7 +1,6 @@
 use std::{collections::HashMap, str::FromStr};
 pub mod error;
 use crate::{config::espx::ModelConfig, interact::execution::InteractDocumentInfo};
-use anyhow::anyhow;
 use error::AgentsError;
 use espionox::{
     agents::{memory::MessageStackRef, Agent},
@@ -80,8 +79,9 @@ impl TryInto<Uri> for AgentID {
     type Error = AgentsError;
     fn try_into(self) -> Result<Uri, Self::Error> {
         if let AgentID::Uri(uri) = self {
-            let val = Uri::from_str(&uri)
-                .map_err(|err| anyhow!("Could not create uri from str: {err:#?}"))?;
+            let val = Uri::from_str(&uri).map_err(|err| {
+                std::io::Error::other(format!("Could not create uri from str: {err:#?}")).into()
+            })?;
             return Ok(val);
         }
         Err(AgentsError::IncorrectAgentIDVariant(self))

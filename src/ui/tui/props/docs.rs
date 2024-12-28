@@ -1,3 +1,5 @@
+use crate::MainResult;
+
 use super::{CurrentPane, TuiProp};
 use crossterm::event::KeyCode;
 use lsp_types::Uri;
@@ -26,7 +28,7 @@ impl TuiProp for DocsProps {
     fn handle_keyevent(
         tui: &mut crate::ui::tui::Tui,
         event: crossterm::event::KeyEvent,
-    ) -> anyhow::Result<()> {
+    ) -> MainResult<()> {
         match event.code {
             KeyCode::Esc => {
                 tui.current_pane = CurrentPane::Normal;

@@ -7,7 +7,6 @@ use crate::{
     interact::{execution::InteractDocumentInfo, InteractLspRequest},
     state::SharedState,
 };
-use anyhow::anyhow;
 use lsp_server::Request;
 use lsp_types::{DocumentDiagnosticParams, GotoDefinitionParams, HoverParams};
 use tracing::{debug, warn};
@@ -71,7 +70,7 @@ pub async fn handle_goto_definition(
     let doc_tokens = w
         .documents
         .get(&uri)
-        .ok_or(anyhow!("document not present"))?
+        .ok_or(std::io::Error::other("document not present").into())?
         .clone();
 
     let (comment, idx) = match doc_tokens.comment_in_position(&position) {
@@ -115,7 +114,7 @@ pub async fn handle_hover(
     let doc_tokens = w
         .documents
         .get(&uri)
-        .ok_or(anyhow!("document not present"))?
+        .ok_or(std::io::Error::other("document not present").into())?
         .clone();
     let (comment, idx) = match doc_tokens.comment_in_position(&position) {
         Some((com, i)) => (com.clone(), i),

@@ -1,12 +1,10 @@
+use crate::config::database::DatabaseConfig;
+use crate::MainResult;
 use std::{
     process::{Child, ChildStdout, Command, Stdio},
     sync::mpsc::{self, TryRecvError},
     thread::JoinHandle,
 };
-
-use super::error::DatabaseResult;
-use crate::config::database::DatabaseConfig;
-use anyhow::anyhow;
 use surrealdb::{
     engine::local::{Db, RocksDb},
     opt::auth::Root,
@@ -32,7 +30,7 @@ impl DatabaseThread {
     pub(super) async fn try_init(
         config: DatabaseConfig,
         database_path: String,
-    ) -> DatabaseResult<Self> {
+    ) -> MainResult<Self> {
         let (sender, recv) = mpsc::channel::<DatabaseThreadMessage>();
 
         let address = format!("{LOCALHOST}:{}", config.port);
@@ -96,7 +94,7 @@ impl DatabaseThread {
                     TryRecvError::Disconnected => {
                         let e = String::from("channel disconnected before returning stdout");
                         warn!(e);
-                        return Err(anyhow!(e).into());
+                        return Err(std::io::Error::other(format!("{e:#?}")).into());
                     }
                 },
             }

@@ -7,11 +7,12 @@ use espx_lsp_server::{
         Config, ConfigFromFile,
     },
     state::LspState,
+    MainResult,
 };
 use std::{collections::HashMap, path::PathBuf};
 use tracing::warn;
 
-pub fn test_config(database: bool) -> anyhow::Result<Config> {
+pub fn test_config(database: bool) -> MainResult<Config> {
     dotenv::dotenv().ok();
     let key = std::env::var("ANTHROPIC_KEY").unwrap();
 

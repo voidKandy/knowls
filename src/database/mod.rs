@@ -1,10 +1,11 @@
-pub mod error;
 pub mod models;
 mod thread;
 use std::path::PathBuf;
 
-use self::error::DatabaseResult;
-use crate::config::{database::DatabaseConfig, Config};
+use crate::{
+    config::{database::DatabaseConfig, Config},
+    MainResult,
+};
 use serde::Deserialize;
 use surrealdb::sql::Thing;
 use thread::DatabaseThread;
@@ -32,7 +33,7 @@ impl Database {
     }
 
     #[tracing::instrument(name = "initialize database connection", skip_all)]
-    pub async fn init_thread(&mut self) -> DatabaseResult<()> {
+    pub async fn init_thread(&mut self) -> MainResult<()> {
         let thread = DatabaseThread::try_init(
             self.config.clone(),
             self.path

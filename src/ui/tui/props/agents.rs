@@ -1,5 +1,5 @@
 use super::{CurrentPane, TuiProp};
-use crate::agents::AgentID;
+use crate::{agents::AgentID, MainResult};
 use crossterm::event::KeyCode;
 use ratatui::{
     style::{Color, Stylize},
@@ -43,7 +43,7 @@ impl TuiProp for AgentProps {
     fn handle_keyevent(
         tui: &mut crate::ui::tui::Tui,
         event: crossterm::event::KeyEvent,
-    ) -> anyhow::Result<()> {
+    ) -> MainResult<()> {
         match event.code {
             KeyCode::Esc => {
                 tui.current_pane = CurrentPane::Normal;

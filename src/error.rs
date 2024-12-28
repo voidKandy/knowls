@@ -1,4 +1,4 @@
-use crate::{agents::error::AgentsError, database::error::DatabaseError};
+use crate::{agents::error::AgentsError, database::error::DatabaseError, MainErr};
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 
 #[allow(unused_must_use)]
@@ -19,7 +19,7 @@ pub type StateResult<T> = Result<T, StateError>;
 #[derive(thiserror::Error)]
 pub enum StateError {
     #[error(transparent)]
-    Undefined(#[from] anyhow::Error),
+    Undefined(#[from] MainErr),
     DatabaseNotPresent,
     RegistryNotPresent,
     AgentsNotPresent,

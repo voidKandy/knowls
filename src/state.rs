@@ -21,6 +21,7 @@ use crate::{
         },
         InteractVar,
     },
+    MainResult,
 };
 use lsp_types::Uri;
 use std::{collections::HashMap, sync::Arc};
@@ -40,7 +41,7 @@ pub struct LspState<'i> {
 
 impl<'i> LspState<'i> {
     #[tracing::instrument(name = "initializing state", skip_all)]
-    pub async fn new(config: Config) -> anyhow::Result<Self> {
+    pub async fn new(config: Config) -> MainResult<Self> {
         let mut database = Database::new(&config);
         if let Some(db) = database.as_mut() {
             db.init_thread()
@@ -221,21 +222,21 @@ impl<'i> Clone for SharedState<'i> {
 
 impl<'i> SharedState<'i> {
     #[tracing::instrument(name = "initializing shared state", skip_all)]
-    pub async fn init(config: Config) -> anyhow::Result<Self> {
+    pub async fn init(config: Config) -> MainResult<Self> {
         Ok(Self::new(LspState::new(config).await?))
     }
 
     pub fn new(state: LspState<'i>) -> Self {
         Self(Arc::new(RwLock::new(state)))
     }
-    // pub fn get_read(&self) -> anyhow::Result<RwLockReadGuard<'_, LspState>> {
+    // pub fn get_read(&self) -> MainResult<RwLockReadGuard<'_, LspState>> {
     //     match self.0.try_read() {
     //         Ok(g) => Ok(g),
     //         Err(e) => Err(e.into()),
     //     }
     // }
     //
-    // pub fn get_write(&mut self) -> anyhow::Result<RwLockWriteGuard<'_, LspState>> {
+    // pub fn get_write(&mut self) -> MainResult<RwLockWriteGuard<'_, LspState>> {
     //     match self.0.try_write() {
     //         Ok(g) => Ok(g),
     //         Err(e) => Err(e.into()),

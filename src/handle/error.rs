@@ -6,6 +6,7 @@ use super::buffer_operations::{
 use crate::{
     error::{error_chain_fmt, StateError},
     interact::InteractError,
+    MainErr,
 };
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 
@@ -13,7 +14,7 @@ pub type HandleResult<T> = Result<T, HandleError>;
 #[derive(thiserror::Error)]
 pub enum HandleError {
     #[error(transparent)]
-    Undefined(#[from] anyhow::Error),
+    Undefined(#[from] MainErr),
     Json(#[from] serde_json::error::Error),
     TokioLock(#[from] tokio::sync::TryLockError),
     BufferOp(#[from] BufferOpError),

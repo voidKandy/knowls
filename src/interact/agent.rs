@@ -17,6 +17,7 @@ use crate::{
         error::{HandleError, HandleResult},
     },
     state::LspState,
+    MainErr,
 };
 use espionox::{
     agents::{memory::OtherRoleTo, Agent},
@@ -62,15 +63,16 @@ impl AgentInteract {
 }
 
 impl TryFrom<char> for AgentInteract {
-    type Error = anyhow::Error;
+    type Error = MainErr;
     fn try_from(value: char) -> Result<Self, Self::Error> {
         match value {
             Self::PUSH => Ok(Self::Push),
             Self::PROMPT => Ok(Self::Prompt),
             Self::RAG_PROMPT => Ok(Self::RagPrompt),
-            _ => Err(anyhow::anyhow!(
+            _ => Err(std::io::Error::other(format!(
                 "could not create agent interact from {value}"
-            )),
+            ))
+            .into()),
         }
     }
 }

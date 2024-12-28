@@ -1,4 +1,4 @@
-use crate::error::error_chain_fmt;
+use crate::{error::error_chain_fmt, MainErr};
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 
 use super::AgentID;
@@ -8,7 +8,7 @@ pub type AgentsResult<T> = Result<T, AgentsError>;
 #[derive(thiserror::Error)]
 pub enum AgentsError {
     #[error(transparent)]
-    Undefined(#[from] anyhow::Error),
+    Undefined(#[from] MainErr),
     IncorrectAgentIDVariant(AgentID),
     AgentNotPresent(AgentID),
     // DocAgentNotPresent(Uri),

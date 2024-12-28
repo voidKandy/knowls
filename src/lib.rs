@@ -10,11 +10,24 @@ pub mod telemetry;
 pub mod ui;
 pub(crate) mod util;
 
+pub type MainErr = Box<dyn std::error::Error + Send + Sync + 'static>;
+
+macro_rules! other_err {
+    ($($arg:tt)*) => ({
+        std::io::Error::other(format!($($arg)*)).into()
+    });
+}
+pub(crate) use other_err;
+
+pub type MainResult<T> = std::result::Result<T, MainErr>;
+
 pub mod embeddings {
 
     use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 
-    pub fn embed_sentences(sentences: Vec<&str>) -> anyhow::Result<Vec<Vec<f32>>> {
+    use crate::MainResult;
+
+    pub fn embed_sentences(sentences: Vec<&str>) -> MainResult<Vec<Vec<f32>>> {
         // With default InitOptions
         let model = TextEmbedding::try_new(Default::default())?;
 

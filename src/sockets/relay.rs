@@ -2,8 +2,8 @@ use crate::{
     handle::{self, buffer_operations::BufferOpChannelStatus},
     sockets::{init_clientside_listener_and_stream, CLIENTSIDE_RELAY_ADDR, SERVERSIDE_RELAY_ADDR},
     state::SharedState,
+    MainResult,
 };
-use anyhow::anyhow;
 use lsp_types::{
     CodeActionProviderCapability, DiagnosticServerCapabilities, InitializeParams,
     ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
@@ -71,7 +71,7 @@ pub async fn from_relay_recv_loop(
                                 }
                                 handle::requests::handle_request(req, state.clone()).await
                             }
-                            _ => Err(anyhow!("No handler for responses").into()),
+                            _ => Err(std::io::Error::other("No handler for responses").into()),
                         } {
                             Ok(mut buffer_op_channel_handler) => {
                                 while let Some(status) =
@@ -111,7 +111,7 @@ async fn relay_main_loop(
     unix_listener: UnixListener,
     lsp_connection: lsp_server::Connection,
     params: serde_json::Value,
-) -> anyhow::Result<()> {
+) -> MainResult<()> {
     let _params: InitializeParams = serde_json::from_value(params).unwrap();
     let (recv, sender) = (lsp_connection.receiver, lsp_connection.sender);
 
@@ -155,7 +155,7 @@ async fn relay_main_loop(
     Ok(())
 }
 
-pub async fn start_lsp_relay() -> anyhow::Result<()> {
+pub async fn start_lsp_relay() -> MainResult<()> {
     tracing::info!("starting LSP RPC relay");
     let (connection, io_threads) = lsp_server::Connection::stdio();
 

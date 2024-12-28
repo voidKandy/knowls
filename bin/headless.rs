@@ -6,12 +6,13 @@ use espx_lsp_server::{
         CLIENTSIDE_RELAY_ADDR, CLI_TRACING, SERVERSIDE_RELAY_ADDR,
     },
     state::SharedState,
+    MainResult,
 };
 use std::sync::{Arc, LazyLock};
 use tokio::sync::RwLock;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> MainResult<()> {
     LazyLock::force(&CLI_TRACING);
     tracing::warn!("spinning up headless Language Server");
     let config = Config::init_from_global_config().expect("failed to build config");

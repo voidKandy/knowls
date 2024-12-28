@@ -9,7 +9,6 @@ use crate::{
     interact::{execution::InteractDocumentInfo, InteractLspNotification},
     state::SharedState,
 };
-use anyhow::anyhow;
 use lsp_server::Notification;
 use lsp_types::{
     DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
@@ -84,7 +83,12 @@ pub async fn handle_didSave<'s>(
     let text = params
         .text
         .as_ref()
-        .ok_or(HandleError::Undefined(anyhow!("No text on didSave noti")))?
+        .ok_or(
+            HandleError::Undefined(
+                std::io::Error::other(format!("No text on didSave noti")).into(),
+            )
+            .into(),
+        )?
         .to_owned();
     let uri = params.text_document.uri.clone();
 

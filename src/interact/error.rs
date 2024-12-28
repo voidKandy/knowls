@@ -1,4 +1,4 @@
-use crate::error::error_chain_fmt;
+use crate::{error::error_chain_fmt, MainErr};
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 
 pub type InteractResult<T> = Result<T, InteractError>;
@@ -6,7 +6,7 @@ pub type InteractResult<T> = Result<T, InteractError>;
 #[derive(thiserror::Error)]
 pub enum InteractError {
     #[error(transparent)]
-    Undefined(#[from] anyhow::Error),
+    Undefined(#[from] MainErr),
     RegistryFull,
     UnhandledLanguageExtension(String),
     NoCommentToken,

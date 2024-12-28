@@ -1,5 +1,4 @@
-use crate::state::LspState;
-use anyhow::Ok;
+use crate::{state::LspState, MainResult};
 use lsp_types::{PublishDiagnosticsParams, Uri};
 use tokio::sync::RwLockWriteGuard;
 
@@ -14,7 +13,7 @@ impl LspDiagnostic {
     pub fn diagnose_document<'i>(
         uri: Uri,
         w: &'i mut RwLockWriteGuard<'_, LspState<'static>>,
-    ) -> anyhow::Result<LspDiagnostic> {
+    ) -> MainResult<LspDiagnostic> {
         let mut all_diagnostics = vec![];
         let tokens = w.documents.get(&uri).cloned().unwrap();
 

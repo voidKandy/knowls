@@ -7,6 +7,7 @@ use super::{
 use crate::{
     handle::{buffer_operations::BufferOperation, error::HandleResult},
     state::LspState,
+    MainErr,
 };
 use lsp_server::RequestId;
 use lsp_types::{
@@ -36,13 +37,14 @@ impl DBInteract {
 }
 
 impl TryFrom<char> for DBInteract {
-    type Error = anyhow::Error;
+    type Error = MainErr;
     fn try_from(value: char) -> Result<Self, Self::Error> {
         match value {
             Self::DATABASE => Ok(Self),
-            _ => Err(anyhow::anyhow!(
+            _ => Err(std::io::Error::other(format!(
                 "could not create agent interact from {value}"
-            )),
+            ))
+            .into()),
         }
     }
 }

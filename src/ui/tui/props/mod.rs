@@ -5,7 +5,10 @@ pub mod global;
 use std::fmt::Debug;
 
 use super::{CurrentPane, Tui};
-use crate::state::{LspState, SharedState};
+use crate::{
+    state::{LspState, SharedState},
+    MainResult,
+};
 use crossterm::event::KeyEvent;
 use ratatui::{crossterm::event::KeyCode, layout::Rect, style::Color, Frame};
 use tokio::{
@@ -16,7 +19,7 @@ use tokio::{
 #[allow(async_fn_in_trait, private_interfaces)]
 pub trait TuiProp {
     fn run(&mut self, state_ref: &mut SharedState<'static>) {}
-    fn handle_keyevent(tui: &mut Tui, event: KeyEvent) -> anyhow::Result<()>;
+    fn handle_keyevent(tui: &mut Tui, event: KeyEvent) -> MainResult<()>;
     async fn from_state_read(r: &RwLockReadGuard<'_, LspState<'static>>) -> Self;
     fn draw(&mut self, selected: bool, frame: &mut Frame, area: Rect);
     fn select_me() -> (KeyCode, CurrentPane);
@@ -31,7 +34,7 @@ pub trait TaskingProp<M: Send + Debug + Sync + 'static> {
     where
         ARGS: Sync + Send + 'static,
         F: FnOnce(ARGS) -> T + Sync + Send + 'static,
-        T: std::future::Future<Output = Result<M, anyhow::Error>> + Send + 'static,
+        T: std::future::Future<Output = MainResult<M>> + Send + 'static,
     {
         if self.task().is_some() {
             panic!("tried to schedule a task before one finished");

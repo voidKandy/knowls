@@ -1,5 +1,5 @@
 use super::{CurrentPane, TaskingProp, TuiProp};
-use crate::util::OneOf;
+use crate::{util::OneOf, MainResult};
 use crossterm::event::KeyCode;
 use ratatui::{
     style::{Color, Style, Stylize},
@@ -48,7 +48,7 @@ impl TuiProp for DBProps {
     fn handle_keyevent(
         tui: &mut crate::ui::tui::Tui,
         event: crossterm::event::KeyEvent,
-    ) -> anyhow::Result<()> {
+    ) -> MainResult<()> {
         match event.code {
             KeyCode::Esc => {
                 tui.current_pane = CurrentPane::Normal;

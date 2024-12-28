@@ -1,5 +1,4 @@
-use crate::error::error_chain_fmt;
-use anyhow::anyhow;
+use crate::{error::error_chain_fmt, MainErr};
 use crossbeam_channel::SendError;
 use lsp_server::Message;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
@@ -8,7 +7,7 @@ pub type BufferOpResult<T> = Result<T, BufferOpError>;
 #[derive(thiserror::Error)]
 pub enum BufferOpError {
     #[error(transparent)]
-    Undefined(#[from] anyhow::Error),
+    Undefined(#[from] MainErr),
     Io(#[from] std::io::Error),
     Channel(#[from] BufferOpChannelError),
     Json(#[from] serde_json::Error),
@@ -36,8 +35,8 @@ pub type BufferOpChannelResult<T> = Result<T, BufferOpChannelError>;
 #[derive(thiserror::Error)]
 pub enum BufferOpChannelError {
     #[error(transparent)]
-    Undefined(#[from] anyhow::Error),
-    TokioSend(anyhow::Error),
+    Undefined(#[from] MainErr),
+    TokioSend(MainErr),
     Timeout,
     CrossBeamSend(#[from] SendError<Message>),
     Json(#[from] serde_json::Error),
@@ -45,7 +44,7 @@ pub enum BufferOpChannelError {
 
 impl<E> From<tokio::sync::mpsc::error::SendError<E>> for BufferOpChannelError {
     fn from(value: tokio::sync::mpsc::error::SendError<E>) -> Self {
-        Self::TokioSend(anyhow!("Send Error: {:?}", value))
+        Self::TokioSend(std::io::Error::other(format!("Send Error: {:?}", value)).into())
     }
 }
 

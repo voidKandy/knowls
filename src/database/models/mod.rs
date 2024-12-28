@@ -1,8 +1,6 @@
 pub mod agent_memories;
 pub mod block;
-use super::error::{DatabaseError, DatabaseResult};
-use crate::util::OneOf;
-use anyhow::anyhow;
+use crate::{util::OneOf, MainResult};
 use serde::{Deserialize, Serialize};
 use surrealdb::sql::Thing;
 use tracing::debug;
@@ -14,7 +12,7 @@ pub struct FieldQuery {
 }
 
 impl FieldQuery {
-    pub fn new(name: &str, val: impl Serialize) -> DatabaseResult<Self> {
+    pub fn new(name: &str, val: impl Serialize) -> MainResult<Self> {
         Ok(Self {
             name: name.to_string(),
             val: serde_json::to_value(val)?,
@@ -64,14 +62,11 @@ where
     fn db_id() -> &'static str;
     /// for easy access to ID from reference to trait object
     fn thing(&self) -> &Thing;
-    fn content(oneof: &'l impl IntoOneOf<'l, Self, P>) -> DatabaseResult<String>;
-    fn merge(oneof: &'l impl IntoOneOf<'l, Self, P>) -> DatabaseResult<String> {
+    fn content(oneof: &'l impl IntoOneOf<'l, Self, P>) -> MainResult<String>;
+    fn merge(oneof: &'l impl IntoOneOf<'l, Self, P>) -> MainResult<String> {
         let str = Self::content(oneof)?;
         if !str.contains("CONTENT") {
-            return Err(DatabaseError::Undefined(anyhow!(
-                "invalid content statement: {}",
-                str
-            )));
+            return Err(crate::other_err!("invalid content statement: {}", str));
         }
         Ok(format!(
             "MERGE {}",
@@ -79,13 +74,13 @@ where
         ))
     }
 
-    fn upsert(params: &'l P) -> DatabaseResult<String>;
+    fn upsert(params: &'l P) -> MainResult<String>;
 
     /// Updates by either ID (Single) or matching field value (Multiple)
     fn update(
         oneof: &'l impl IntoOneOf<'l, Thing, FieldQuery>,
         params: &'l impl IntoOneOf<'l, Self, P>,
-    ) -> DatabaseResult<String> {
+    ) -> MainResult<String> {
         let q = match IntoOneOf::<Thing, FieldQuery>::one_of(oneof) {
             OneOf::Left(thing) => format!(
                 "UPDATE {}:{} {};",
@@ -106,7 +101,7 @@ where
     }
 
     /// Deletes by either ID (Single) or matching field value (Multiple)
-    fn delete(oneof: &'l impl IntoOneOf<'l, Thing, FieldQuery>) -> DatabaseResult<String> {
+    fn delete(oneof: &'l impl IntoOneOf<'l, Thing, FieldQuery>) -> MainResult<String> {
         match IntoOneOf::<Thing, FieldQuery>::one_of(oneof) {
             OneOf::Left(thing) => Ok(format!("DELETE {}:{};", Self::db_id(), thing.id,)),
             OneOf::Right(fq) => Ok(format!(
@@ -122,7 +117,7 @@ where
     fn select(
         oneof: Option<&'l impl IntoOneOf<'l, Thing, FieldQuery>>,
         fieldname: Option<&str>,
-    ) -> DatabaseResult<String> {
+    ) -> MainResult<String> {
         match oneof.and_then(|of| Some(IntoOneOf::<Thing, FieldQuery>::one_of(of))) {
             Some(OneOf::Left(thing)) => Ok(format!(
                 "SELECT {} FROM {}:{};",
