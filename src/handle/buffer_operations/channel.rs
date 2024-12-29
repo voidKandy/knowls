@@ -1,22 +1,19 @@
 use std::time::Duration;
 
-use crate::handle::buffer_operations::BufferOpChannelError;
+use crate::{other_err, MainResult};
 
-use super::{BufferOpChannelResult, BufferOperation};
+use super::BufferOperation;
 use futures::{self, Stream};
 use lsp_types::{
     WorkDoneProgress, WorkDoneProgressBegin, WorkDoneProgressEnd, WorkDoneProgressReport,
 };
 use tracing::{debug, warn};
 
-pub type BufferOpChannel = Box<dyn Stream<Item = BufferOpChannelResult<BufferOpChannelStatus>>>;
+pub type BufferOpChannel = Box<dyn Stream<Item = MainResult<BufferOpChannelStatus>>>;
 
-pub type BufferOpChannelReceiver =
-    tokio::sync::mpsc::Receiver<BufferOpChannelResult<BufferOpChannelStatus>>;
+pub type BufferOpChannelReceiver = tokio::sync::mpsc::Receiver<MainResult<BufferOpChannelStatus>>;
 #[derive(Clone, Debug)]
-pub struct BufferOpChannelSender(
-    tokio::sync::mpsc::Sender<BufferOpChannelResult<BufferOpChannelStatus>>,
-);
+pub struct BufferOpChannelSender(tokio::sync::mpsc::Sender<MainResult<BufferOpChannelStatus>>);
 
 #[derive(Debug)]
 pub struct BufferOpChannelHandler {
@@ -38,8 +35,7 @@ impl From<BufferOperation> for BufferOpChannelStatus {
 
 impl BufferOpChannelHandler {
     pub fn new() -> Self {
-        let channel =
-            tokio::sync::mpsc::channel::<BufferOpChannelResult<BufferOpChannelStatus>>(55);
+        let channel = tokio::sync::mpsc::channel::<MainResult<BufferOpChannelStatus>>(55);
         Self {
             sender: BufferOpChannelSender(channel.0),
             receiver: channel.1,
@@ -48,31 +44,28 @@ impl BufferOpChannelHandler {
 }
 
 impl BufferOpChannelSender {
-    pub async fn send_operation(&mut self, op: BufferOperation) -> BufferOpChannelResult<()> {
+    pub async fn send_operation(&mut self, op: BufferOperation) -> MainResult<()> {
         debug!("sending buffer operation to client: {:?}", op);
-        let result =
-            tokio::time::timeout(Duration::from_millis(1000), self.0.send(Ok(op.into()))).await;
-
-        match result {
-            Ok(send_result) => send_result.map_err(|err| err.into()),
-            Err(_) => Err(BufferOpChannelError::Timeout),
-        }
+        tokio::time::timeout(Duration::from_millis(100), self.0.send(Ok(op.into())))
+            .await?
+            .map_err(|err| other_err!("{err:#?}"))
     }
 
-    pub async fn send_finish(&self) -> BufferOpChannelResult<()> {
-        let result = tokio::time::timeout(
-            Duration::from_millis(1000),
+    pub async fn send_finish(&self) -> MainResult<()> {
+        tokio::time::timeout(
+            Duration::from_millis(100),
             self.0.send(Ok(BufferOpChannelStatus::Finished)),
         )
-        .await;
+        .await?
+        .map_err(|err| other_err!("{err:#?}"))
 
-        match result {
-            Ok(send_result) => send_result.map_err(|err| err.into()),
-            Err(_) => Err(BufferOpChannelError::Timeout),
-        }
+        // match result {
+        //     Ok(send_result) => send_result.map_err(|err| err.into()),
+        //     Err(_) => Err(BufferOpChannelError::Timeout),
+        // }
     }
 
-    pub async fn start_work_done(&mut self, message: Option<&str>) -> BufferOpChannelResult<()> {
+    pub async fn start_work_done(&mut self, message: Option<&str>) -> MainResult<()> {
         let work_done = WorkDoneProgressBegin {
             message: message.and_then(|s| Some(s.to_string())),
             ..Default::default()
@@ -89,7 +82,7 @@ impl BufferOpChannelSender {
         &mut self,
         message: Option<&str>,
         percentage: Option<u32>,
-    ) -> BufferOpChannelResult<()> {
+    ) -> MainResult<()> {
         let work_done = WorkDoneProgressReport {
             message: message.and_then(|s| Some(s.to_string())),
             percentage,
@@ -106,7 +99,7 @@ impl BufferOpChannelSender {
         Ok(())
     }
 
-    pub async fn send_work_done_end(&mut self, message: Option<&str>) -> BufferOpChannelResult<()> {
+    pub async fn send_work_done_end(&mut self, message: Option<&str>) -> MainResult<()> {
         let work_done = WorkDoneProgressEnd {
             message: message.and_then(|s| Some(s.to_string())),
             ..Default::default()
@@ -125,7 +118,7 @@ mod tests {
         let mut ops_stream_handler = BufferOpChannelHandler::new();
         let s_clone = ops_stream_handler.sender.clone();
 
-        let _: tokio::task::JoinHandle<BufferOpChannelResult<()>> = tokio::spawn(async move {
+        let _: tokio::task::JoinHandle<MainResult<()>> = tokio::spawn(async move {
             for _ in 0..5 {
                 s_clone
                     .clone()

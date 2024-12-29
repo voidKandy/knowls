@@ -1,9 +1,9 @@
 use super::{DatabaseStruct, IntoOneOf};
 use crate::{
-    database::error::DatabaseError,
     interact::parsing::tokens::{Token, TokenVec},
+    other_err,
     util::OneOf,
-    MainErr,
+    MainErr, MainResult,
 };
 use base64::{prelude::BASE64_URL_SAFE_NO_PAD, Engine};
 use lsp_types::Uri;
@@ -38,11 +38,10 @@ impl TryFrom<Thing> for DBBlockID {
     fn try_from(value: Thing) -> Result<Self, Self::Error> {
         match value.id {
             surrealdb::sql::Id::String(string) => Ok(Self(string)),
-            _ => Err(std::io::Error::other(format!(
+            _ => Err(other_err!(
                 "{:#?} cannot be turned into a DBBlockID",
                 value.id
-            ))
-            .into()),
+            )),
         }
     }
 }
@@ -137,9 +136,7 @@ impl<'l> DatabaseStruct<'l, DBBlockParams> for DBBlock {
     fn thing(&self) -> &Thing {
         &self.id
     }
-    fn content(
-        oneof: &'l impl IntoOneOf<'l, Self, DBBlockParams>,
-    ) -> crate::database::error::DatabaseResult<String> {
+    fn content(oneof: &'l impl IntoOneOf<'l, Self, DBBlockParams>) -> MainResult<String> {
         match IntoOneOf::<Self, DBBlockParams>::one_of(oneof) {
             OneOf::Left(me) => {
                 let content_embedding_string = {
@@ -197,12 +194,13 @@ impl<'l> DatabaseStruct<'l, DBBlockParams> for DBBlock {
         }
     }
 
-    fn upsert(params: &DBBlockParams) -> crate::database::error::DatabaseResult<String> {
+    fn upsert(params: &DBBlockParams) -> MainResult<String> {
         if params.uri.is_none() || params.content.is_none() {
-            return Err(DatabaseError::DbStruct(format!(
+            return Err(other_err!(
                 "All fields need to be Some for a create statement, got: {:?} {:?} ",
-                params.uri, params.content,
-            )));
+                params.uri,
+                params.content,
+            ));
         }
 
         Ok(format!(

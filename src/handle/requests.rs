@@ -1,11 +1,13 @@
 use super::{
     buffer_operations::{BufferOpChannelHandler, BufferOpChannelSender},
-    error::{HandleError, HandleResult},
+    show_request_err,
 };
 use crate::{
     handle::BufferOpChannelJoinHandle,
     interact::{execution::InteractDocumentInfo, InteractLspRequest},
+    other_err,
     state::SharedState,
+    MainResult,
 };
 use lsp_server::Request;
 use lsp_types::{DocumentDiagnosticParams, GotoDefinitionParams, HoverParams};
@@ -15,7 +17,7 @@ use tracing::{debug, warn};
 pub async fn handle_request(
     req: Request,
     state: SharedState<'static>,
-) -> HandleResult<BufferOpChannelHandler> {
+) -> MainResult<BufferOpChannelHandler> {
     let handle = BufferOpChannelHandler::new();
     let mut task_sender = handle.sender.clone();
     let _: BufferOpChannelJoinHandle = tokio::spawn(async move {
@@ -36,11 +38,11 @@ pub async fn handle_request(
                 task_sender
                     .send_finish()
                     .await
-                    .map_err(|err| HandleError::from(err))?;
+                    .map_err(|err| other_err!("{err:#?}"))?;
                 Ok(())
             }
             Err(err) => {
-                err.request_err(&mut task_sender).await?;
+                show_request_err(&err, &mut task_sender).await?;
                 Ok(())
             }
         }
@@ -53,7 +55,7 @@ pub async fn handle_goto_definition(
     req: Request,
     state: SharedState<'static>,
     mut sender: BufferOpChannelSender,
-) -> HandleResult<()> {
+) -> MainResult<()> {
     let params = serde_json::from_value::<GotoDefinitionParams>(req.params)?;
 
     let uri = params
@@ -70,7 +72,7 @@ pub async fn handle_goto_definition(
     let doc_tokens = w
         .documents
         .get(&uri)
-        .ok_or(std::io::Error::other("document not present").into())?
+        .ok_or(crate::other_err!("document not present: {uri:#?}"))?
         .clone();
 
     let (comment, idx) = match doc_tokens.comment_in_position(&position) {
@@ -100,7 +102,7 @@ pub async fn handle_hover(
     req: Request,
     state: SharedState<'static>,
     mut sender: BufferOpChannelSender,
-) -> HandleResult<()> {
+) -> MainResult<()> {
     let params = serde_json::from_value::<HoverParams>(req.params)?;
     let uri = params
         .text_document_position_params
@@ -114,7 +116,7 @@ pub async fn handle_hover(
     let doc_tokens = w
         .documents
         .get(&uri)
-        .ok_or(std::io::Error::other("document not present").into())?
+        .ok_or(crate::other_err!("document not present: {uri:#?}"))?
         .clone();
     let (comment, idx) = match doc_tokens.comment_in_position(&position) {
         Some((com, i)) => (com.clone(), i),
@@ -142,7 +144,7 @@ async fn handle_diagnostics(
     req: Request,
     mut state: SharedState<'static>,
     sender: BufferOpChannelSender,
-) -> HandleResult<()> {
+) -> MainResult<()> {
     let params: DocumentDiagnosticParams =
         serde_json::from_value::<DocumentDiagnosticParams>(req.params)?;
     let w = state.0.try_write()?;
@@ -157,7 +159,7 @@ async fn handle_diagnostics(
 async fn handle_shutdown(
     state: SharedState<'static>,
     sender: BufferOpChannelSender,
-) -> HandleResult<()> {
+) -> MainResult<()> {
     warn!("shutting down server");
     // sender.start_work_done(Some("Shutting down server")).await?;
     // let mut w = state.0.try_write()?;

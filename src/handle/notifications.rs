@@ -1,13 +1,13 @@
 use super::{
     buffer_operations::{BufferOpChannelHandler, BufferOpChannelSender},
     diagnostics::LspDiagnostic,
-    error::HandleResult,
-    BufferOpChannelJoinHandle,
+    show_notification_err, BufferOpChannelJoinHandle,
 };
 use crate::{
-    handle::error::HandleError,
     interact::{execution::InteractDocumentInfo, InteractLspNotification},
+    other_err,
     state::SharedState,
+    MainResult,
 };
 use lsp_server::Notification;
 use lsp_types::{
@@ -19,7 +19,7 @@ use tracing::{debug, warn};
 pub async fn handle_notification(
     noti: Notification,
     state: SharedState<'static>,
-) -> HandleResult<BufferOpChannelHandler> {
+) -> MainResult<BufferOpChannelHandler> {
     let handle = BufferOpChannelHandler::new();
 
     let mut task_sender = handle.sender.clone();
@@ -38,11 +38,11 @@ pub async fn handle_notification(
                 task_sender
                     .send_finish()
                     .await
-                    .map_err(|err| HandleError::from(err))?;
+                    .map_err(|err| other_err!("{err:#?}"))?;
                 Ok(())
             }
             Err(err) => {
-                err.notification_err(&mut task_sender).await?;
+                show_notification_err(&err, &mut task_sender).await?;
                 Ok(())
             }
         }
@@ -56,7 +56,7 @@ async fn handle_didChange(
     noti: Notification,
     state: SharedState<'static>,
     sender: BufferOpChannelSender,
-) -> HandleResult<()> {
+) -> MainResult<()> {
     let text_document_changes: DidChangeTextDocumentParams = serde_json::from_value(noti.params)?;
     let uri = text_document_changes.text_document.uri;
     if text_document_changes.content_changes.len() > 1 {
@@ -77,18 +77,13 @@ pub async fn handle_didSave<'s>(
     noti: Notification,
     state: SharedState<'static>,
     mut sender: BufferOpChannelSender,
-) -> HandleResult<()> {
+) -> MainResult<()> {
     let params: DidSaveTextDocumentParams =
         serde_json::from_value::<DidSaveTextDocumentParams>(noti.params)?;
     let text = params
         .text
         .as_ref()
-        .ok_or(
-            HandleError::Undefined(
-                std::io::Error::other(format!("No text on didSave noti")).into(),
-            )
-            .into(),
-        )?
+        .ok_or(other_err!("No text on didSave noti"))?
         .to_owned();
     let uri = params.text_document.uri.clone();
 
@@ -131,7 +126,7 @@ async fn handle_didOpen(
     noti: Notification,
     state: SharedState<'static>,
     mut sender: BufferOpChannelSender,
-) -> HandleResult<()> {
+) -> MainResult<()> {
     let text_doc_item = serde_json::from_value::<DidOpenTextDocumentParams>(noti.params)?;
     let text = text_doc_item.text_document.text;
     let uri = text_doc_item.text_document.uri;

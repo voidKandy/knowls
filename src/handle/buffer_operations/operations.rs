@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-use super::BufferOpChannelResult;
-use crate::handle::diagnostics::LspDiagnostic;
+use crate::{handle::diagnostics::LspDiagnostic, MainResult};
 use crossbeam_channel::Sender;
 use lsp_server::{Message, Notification, RequestId, Response};
 use lsp_types::{
@@ -56,7 +55,7 @@ impl BufferOperation {
     pub async fn do_operation_headless(
         self,
         sender: Sender<Message>,
-    ) -> BufferOpChannelResult<Sender<Message>> {
+    ) -> MainResult<Sender<Message>> {
         match self {
             BufferOperation::WorkDone(work) => {
                 let method = match work {
@@ -144,7 +143,8 @@ impl BufferOperation {
         }
         return Ok(sender);
     }
-    pub async fn do_operation(self, stream: Arc<RwLock<UnixStream>>) -> BufferOpChannelResult<()> {
+
+    pub async fn do_operation(self, stream: Arc<RwLock<UnixStream>>) -> MainResult<()> {
         let msg = match self {
             BufferOperation::WorkDone(work) => {
                 let method = match work {

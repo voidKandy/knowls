@@ -12,12 +12,10 @@ use super::{
 };
 use crate::{
     agents::{message_stack_into_marked_string, AgentID, Agents},
-    handle::{
-        buffer_operations::BufferOperation,
-        error::{HandleError, HandleResult},
-    },
+    handle::buffer_operations::BufferOperation,
+    other_err,
     state::LspState,
-    MainErr,
+    MainErr, MainResult,
 };
 use espionox::{
     agents::{memory::OtherRoleTo, Agent},
@@ -145,7 +143,7 @@ impl<'i, 'g> LspMessageInteract<'i, 'g, AgentInteractExArgs<'i>> for AgentIntera
         rq_id: RequestId,
         params: impl Into<InteractLspRequest>,
         sender: &mut crate::handle::buffer_operations::BufferOpChannelSender,
-    ) -> HandleResult<()> {
+    ) -> MainResult<()> {
         match Into::<InteractLspRequest>::into(params) {
             InteractLspRequest::GotoDef(goto) => {
                 let uri = goto.text_document_position_params.text_document.uri;
@@ -214,7 +212,7 @@ impl<'i, 'g> LspMessageInteract<'i, 'g, AgentInteractExArgs<'i>> for AgentIntera
                                         None => break,
                                     }
                                 }
-                                Err(err) => return Err(HandleError::from(err)),
+                                Err(err) => return Err(other_err!("{err:#?}")),
                             }
                         }
                         sender.send_work_done_end(Some("Finished")).await?;
@@ -253,7 +251,7 @@ impl<'i, 'g> LspMessageInteract<'i, 'g, AgentInteractExArgs<'i>> for AgentIntera
         args: AgentInteractExArgs<'i>,
         noti: impl Into<InteractLspNotification>,
         sender: &mut crate::handle::buffer_operations::BufferOpChannelSender,
-    ) -> HandleResult<()> {
+    ) -> MainResult<()> {
         match Into::<InteractLspNotification>::into(noti) {
             InteractLspNotification::Save(did_save) => {
                 match self {

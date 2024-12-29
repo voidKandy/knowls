@@ -1,15 +1,8 @@
 use super::{
-    agent::AgentInteract,
-    database::DBInteract,
-    execution::InteractDocumentInfo,
-    parsing::{comments::ParsedComment, tokens::TokenVec},
+    agent::AgentInteract, database::DBInteract, execution::InteractDocumentInfo,
+    parsing::comments::ParsedComment,
 };
-use crate::{
-    handle::{
-        buffer_operations::BufferOpChannelSender, diagnostics::LspDiagnostic, error::HandleResult,
-    },
-    state::LspState,
-};
+use crate::{handle::buffer_operations::BufferOpChannelSender, state::LspState, MainResult};
 use lsp_server::RequestId;
 use lsp_types::{
     Diagnostic, DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
@@ -55,13 +48,13 @@ pub trait LspMessageInteract<'i, 'g, ARGS>: std::fmt::Debug + Copy {
         rq_id: RequestId,
         params: impl Into<InteractLspRequest>,
         sender: &mut BufferOpChannelSender,
-    ) -> HandleResult<()>;
+    ) -> MainResult<()>;
     async fn execute_notification(
         &self,
         args: ARGS,
         noti: impl Into<InteractLspNotification>,
         sender: &mut BufferOpChannelSender,
-    ) -> HandleResult<()>;
+    ) -> MainResult<()>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

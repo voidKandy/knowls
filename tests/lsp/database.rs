@@ -20,33 +20,9 @@ async fn health_test() {
     LazyLock::force(&TEST_TRACING);
     let mut state = test_state(true).await;
     let mut w = state.0.try_write().unwrap();
-    w.database.as_mut().unwrap().init_thread().await.unwrap();
-    if let Err(err) = w
-        .database
-        .as_ref()
-        .unwrap()
-        .thread
-        .as_ref()
-        .unwrap()
-        .client
-        .health()
-        .await
-    {
+    if let Err(err) = w.database.as_ref().unwrap().client.health().await {
         panic!("unhealthy database: {err:#?}")
     }
-
-    let mut buf = String::new();
-    w.database
-        .as_mut()
-        .unwrap()
-        .thread
-        .as_mut()
-        .unwrap()
-        .stdout
-        .read_to_string(&mut buf)
-        .unwrap();
-    warn!("Gt buf: {buf}");
-    assert!(!buf.is_empty());
 }
 
 // #[tokio::test]
@@ -135,15 +111,7 @@ async fn tokens_crud_test() {
     }
 
     let db = w.database.as_mut().unwrap();
-    db.init_thread().await.unwrap();
-    let _: Vec<DBBlock> = db
-        .thread
-        .as_ref()
-        .unwrap()
-        .client
-        .delete(DBBlock::db_id())
-        .await
-        .unwrap();
+    let _: Vec<DBBlock> = db.client.delete(DBBlock::db_id()).await.unwrap();
 
     let mut query = QueryBuilder::begin();
     for document_params in all_block_params.iter() {
@@ -151,22 +119,9 @@ async fn tokens_crud_test() {
             query.push(&DBBlock::upsert(params).unwrap());
         }
     }
-    db.thread
-        .as_ref()
-        .unwrap()
-        .client
-        .query(query.end())
-        .await
-        .unwrap();
+    db.client.query(query.end()).await.unwrap();
 
-    let all: Vec<DBBlock> = db
-        .thread
-        .as_ref()
-        .unwrap()
-        .client
-        .select(DBBlock::db_id())
-        .await
-        .unwrap();
+    let all: Vec<DBBlock> = db.client.select(DBBlock::db_id()).await.unwrap();
     assert_eq!(
         all.len(),
         all_block_params
@@ -185,31 +140,15 @@ async fn tokens_crud_test() {
 
     query.push(&DBBlock::delete(&FieldQuery::new("uri", first_doc_uri).unwrap()).unwrap());
 
-    db.thread
-        .as_ref()
-        .unwrap()
-        .client
-        .query(query.end())
-        .await
-        .unwrap();
+    db.client.query(query.end()).await.unwrap();
 
-    let all: Vec<DBBlock> = db
-        .thread
-        .as_ref()
-        .unwrap()
-        .client
-        .select(DBBlock::db_id())
-        .await
-        .unwrap();
+    let all: Vec<DBBlock> = db.client.select(DBBlock::db_id()).await.unwrap();
     assert_eq!(all.len(), len_not_that_uri);
 
     let second_doc_uri = all_test_docs.iter().nth(1).cloned().unwrap().0;
     let fq = FieldQuery::new("uri", second_doc_uri).unwrap();
 
     let all_to_update: Vec<DBBlock> = db
-        .thread
-        .as_ref()
-        .unwrap()
         .client
         .query(DBBlock::select(Some(&fq), None).unwrap())
         .await
@@ -225,28 +164,12 @@ async fn tokens_crud_test() {
         dbb.content = new_content.to_owned();
         q.push(&DBBlock::update(dbb.thing(), &dbb).unwrap());
     }
-    let updated: Vec<DBBlock> = db
-        .thread
-        .as_ref()
-        .unwrap()
-        .client
-        .query(&q.end())
-        .await
-        .unwrap()
-        .take(0)
-        .unwrap();
+    let updated: Vec<DBBlock> = db.client.query(&q.end()).await.unwrap().take(0).unwrap();
 
     for block in updated {
         assert_eq!(block.content.as_str(), new_content.as_str());
     }
-    let _: Vec<DBBlock> = db
-        .thread
-        .as_ref()
-        .unwrap()
-        .client
-        .delete(DBBlock::db_id())
-        .await
-        .unwrap();
+    let _: Vec<DBBlock> = db.client.delete(DBBlock::db_id()).await.unwrap();
 }
 
 #[tokio::test]
@@ -256,9 +179,7 @@ async fn memories_crud_test() {
     let mut w = state.0.try_write().unwrap();
 
     let db = w.database.as_mut().unwrap();
-    db.init_thread().await.unwrap();
-    let thread = db.thread.as_ref().unwrap();
-    let _: Vec<DBAgentMemory> = thread.client.delete(DBAgentMemory::db_id()).await.unwrap();
+    let _: Vec<DBAgentMemory> = db.client.delete(DBAgentMemory::db_id()).await.unwrap();
 
     let test_mems_1: MessageStack = vec![
         Message::new_system("some system prompt"),
@@ -290,13 +211,13 @@ async fn memories_crud_test() {
         q.push(&DBAgentMemory::upsert(&param).unwrap())
     }
 
-    thread.client.query(q.end()).await.unwrap();
+    db.client.query(q.end()).await.unwrap();
 
-    let all: Vec<DBAgentMemory> = thread.client.select(DBAgentMemory::db_id()).await.unwrap();
+    let all: Vec<DBAgentMemory> = db.client.select(DBAgentMemory::db_id()).await.unwrap();
 
     assert_eq!(all.len(), all_params.len(),);
 
-    let agent_2: DBAgentMemory = thread
+    let agent_2: DBAgentMemory = db
         .client
         .select((
             DBAgentMemory::db_id(),

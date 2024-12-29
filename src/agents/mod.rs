@@ -1,13 +1,11 @@
-use std::{collections::HashMap, str::FromStr};
-pub mod error;
-use crate::{config::espx::ModelConfig, interact::execution::InteractDocumentInfo};
-use error::AgentsError;
+use crate::{config::espx::ModelConfig, other_err, MainErr};
 use espionox::{
     agents::{memory::MessageStackRef, Agent},
     prelude::Message,
 };
 pub use inits::{doc_control_role, ASSISTANT_AGENT_SYSTEM_PROMPT};
 use lsp_types::{MarkedString, Uri};
+use std::{collections::HashMap, str::FromStr};
 use tracing::warn;
 mod inits;
 
@@ -76,25 +74,24 @@ impl std::fmt::Display for AgentID {
 }
 
 impl TryInto<Uri> for AgentID {
-    type Error = AgentsError;
+    type Error = MainErr;
     fn try_into(self) -> Result<Uri, Self::Error> {
         if let AgentID::Uri(uri) = self {
-            let val = Uri::from_str(&uri).map_err(|err| {
-                std::io::Error::other(format!("Could not create uri from str: {err:#?}")).into()
-            })?;
+            let val = Uri::from_str(&uri)
+                .map_err(|err| other_err!("Could not create uri from str: {err:#?}"))?;
             return Ok(val);
         }
-        Err(AgentsError::IncorrectAgentIDVariant(self))
+        Err(other_err!("incorrect agent ID Variant"))
     }
 }
 
 impl TryInto<char> for AgentID {
-    type Error = AgentsError;
+    type Error = MainErr;
     fn try_into(self) -> Result<char, Self::Error> {
         if let AgentID::Char(char) = self {
             return Ok(char);
         }
-        Err(AgentsError::IncorrectAgentIDVariant(self))
+        Err(other_err!("incorrect agent ID Variant"))
     }
 }
 

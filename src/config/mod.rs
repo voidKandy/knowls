@@ -20,7 +20,7 @@ use crate::agents::AgentID;
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Config {
     pub pwd: PathBuf,
-    pub model: Option<ModelConfig>,
+    pub model: ModelConfig,
     pub database: Option<DatabaseConfig>,
     pub agents: Option<AgentConfig>,
 }
@@ -57,7 +57,9 @@ impl From<(ConfigFromFile, PathBuf)> for Config {
 
         Config {
             pwd,
-            model: cfg.model,
+            model: cfg
+                .model
+                .expect("espx ls requires that model info is included in the configuration file"),
             database: cfg.database.and_then(|db| Some(db.into())),
             agents,
         }

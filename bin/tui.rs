@@ -1,3 +1,4 @@
+#![allow(unused, dead_code)]
 use clap::Parser;
 use espx_lsp_server::{
     config::Config,
@@ -6,15 +7,17 @@ use espx_lsp_server::{
         CLI_TRACING, CLI_TRACING_LOG_FILE, SERVERSIDE_RELAY_ADDR,
     },
     state::SharedState,
-    ui::tui::{
-        cli::{CliArgs, CliCommand},
-        Tui,
-    },
 };
 use std::sync::{Arc, LazyLock};
 use tokio::sync::RwLock;
 
+#[cfg(feature = "tui")]
+use espx_lsp_server::ui::tui::{
+    cli::{CliArgs, CliCommand},
+    Tui,
+};
 #[tokio::main]
+#[cfg(feature = "tui")]
 async fn main() {
     let args = CliArgs::parse();
     if let CliCommand::Logs { clear } = args.command {
@@ -46,4 +49,9 @@ async fn main() {
     let app = Tui::new(state).await;
     app.run(terminal).unwrap();
     ratatui::restore();
+}
+
+#[cfg(not(feature = "tui"))]
+fn main() {
+    panic!("you should pass the 'tui' feature flag when running this binary");
 }

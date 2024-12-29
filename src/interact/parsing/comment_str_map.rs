@@ -1,6 +1,5 @@
 use lsp_types::Uri;
 
-use super::super::{InteractError, InteractResult};
 use std::{collections::HashMap, sync::LazyLock};
 
 #[derive(Debug, Clone)]
@@ -47,13 +46,10 @@ impl<'i> CommentStrInfo<'i> {
     }
 }
 
-pub(super) fn get_comment_string_info(ext: &str) -> InteractResult<CommentStrInfo> {
+pub(super) fn get_comment_string_info(ext: &str) -> Option<CommentStrInfo> {
     let m = COMMENT_EXTENSION_MAP;
     let map = LazyLock::force(&m);
-    let comment_str = map
-        .get(ext)
-        .ok_or(InteractError::UnhandledLanguageExtension(ext.to_string()))?;
-    Ok(comment_str.clone())
+    map.get(ext).cloned()
 }
 
 pub(super) const COMMENT_EXTENSION_MAP: LazyLock<HashMap<&str, CommentStrInfo>> =

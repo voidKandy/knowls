@@ -2,7 +2,6 @@ use crate::{
     agents::{AgentID, Agents},
     config::Config,
     database::{
-        error::DatabaseError,
         models::{
             agent_memories::{DBAgentMemory, DBAgentMemoryParams},
             block::{block_params_from, DBBlock},
@@ -10,7 +9,6 @@ use crate::{
         },
         Database,
     },
-    error::{StateError, StateResult},
     interact::{
         agent::uri_agent_role,
         parsing::{
@@ -21,7 +19,7 @@ use crate::{
         },
         InteractVar,
     },
-    MainResult,
+    other_err, MainResult,
 };
 use lsp_types::Uri;
 use std::{collections::HashMap, sync::Arc};
@@ -42,13 +40,15 @@ pub struct LspState<'i> {
 impl<'i> LspState<'i> {
     #[tracing::instrument(name = "initializing state", skip_all)]
     pub async fn new(config: Config) -> MainResult<Self> {
-        let mut database = Database::new(&config);
-        if let Some(db) = database.as_mut() {
-            db.init_thread()
-                .await
-                .expect("failed to init database thread");
-        }
-        let mut agents = Agents::from(config.model.expect("config has no agent information"));
+        let database = match config.database {
+            Some(db_config) => Some(Database::new(db_config).await?),
+            None => None,
+        };
+
+        warn!("got database");
+
+        let mut agents = Agents::from(config.model);
+        warn!("got agents");
         if let Some(ref agents_config) = &config.agents {
             for (agent_id, agent_settings) in agents_config.clone().into_iter() {
                 match agent_id {
@@ -77,7 +77,7 @@ impl<'i> LspState<'i> {
         Ok(state)
     }
 
-    pub async fn save_agent_memories_to_database(&self) -> StateResult<()> {
+    pub async fn save_agent_memories_to_database(&self) -> MainResult<()> {
         let mut all_agent_params = vec![];
         let global_cache = &self
             .agents
@@ -98,7 +98,7 @@ impl<'i> LspState<'i> {
         let db = self
             .database
             .as_ref()
-            .ok_or(StateError::DatabaseNotPresent)?;
+            .ok_or(other_err!("Database not present"))?;
 
         let mut q = QueryBuilder::begin();
 
@@ -106,18 +106,14 @@ impl<'i> LspState<'i> {
             q.push(&DBAgentMemory::upsert(&param)?)
         }
 
-        if let Some(thread) = db.thread.as_ref() {
-            thread
-                .client
-                .query(q.end())
-                .await
-                .map_err(|err| StateError::from(DatabaseError::from(err)))?;
-        }
+        // if let Some(thread) = db.thread.as_ref() {
+        //     thread.client.query(q.end()).await?;
+        // }
 
         Ok(())
     }
 
-    pub async fn save_docs_to_database(&self) -> StateResult<()> {
+    pub async fn save_docs_to_database(&self) -> MainResult<()> {
         let mut all_block_params = vec![];
         for (uri, tokens) in &self.documents {
             let mut params = block_params_from(&tokens, uri.clone());
@@ -127,7 +123,7 @@ impl<'i> LspState<'i> {
         let db = self
             .database
             .as_ref()
-            .ok_or(StateError::DatabaseNotPresent)?;
+            .ok_or(other_err!("Database not present"))?;
 
         let mut q = QueryBuilder::begin();
 
@@ -135,17 +131,13 @@ impl<'i> LspState<'i> {
             q.push(&DBBlock::upsert(&param)?)
         }
 
-        if let Some(thread) = db.thread.as_ref() {
-            thread
-                .client
-                .query(q.end())
-                .await
-                .map_err(|err| StateError::from(DatabaseError::from(err)))?;
-        }
+        // if let Some(thread) = db.thread.as_ref() {
+        //     thread.client.query(q.end()).await?;
+        // }
         Ok(())
     }
 
-    pub fn update_doc_and_agents_from_text(&mut self, uri: Uri, text: &str) -> StateResult<()> {
+    pub fn update_doc_and_agents_from_text(&mut self, uri: Uri, text: &str) -> MainResult<()> {
         self.agents.update_or_create_doc_agent(&uri, &text);
 
         let ext = language_ext_from_uri(&uri);

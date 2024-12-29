@@ -14,7 +14,7 @@ pub type MainErr = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 macro_rules! other_err {
     ($($arg:tt)*) => ({
-        std::io::Error::other(format!($($arg)*)).into()
+        Into::<crate::MainErr>::into(std::io::Error::other(format!($($arg)*)))
     });
 }
 pub(crate) use other_err;

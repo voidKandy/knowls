@@ -2,31 +2,38 @@ use espx_lsp_server::{
     agents::AgentID,
     config::{
         agents::{AgentConfig, AgentSettings},
-        database::{DatabaseConfig, DFLT_PORT},
+        database::DatabaseConfig,
         espx::{ModelConfig, ModelProvider},
         Config, ConfigFromFile,
     },
     state::LspState,
     MainResult,
 };
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, sync::LazyLock};
 use tracing::warn;
 
-pub fn test_config(database: bool) -> MainResult<Config> {
+use crate::helpers::TEST_TRACING;
+
+pub fn test_config(with_database: bool) -> MainResult<Config> {
     dotenv::dotenv().ok();
+    LazyLock::force(&TEST_TRACING);
     let key = std::env::var("ANTHROPIC_KEY").unwrap();
 
-    let database_str = match database {
+    let database_str = match with_database {
         true => {
             r#"
             [database]
             namespace="espx" 
             database="espx"
             user="root"
-            pass="root""#
+            pass="root"
+            protocol="ws""#
         }
+        // IMPORTANT!
+        // Make sure the test protocol is a protocol that supports localhost
         false => "",
     };
+
     let input = format!(
         r#"
             [model]
@@ -59,6 +66,7 @@ fn pwd() -> PathBuf {
 
 #[tokio::test]
 async fn config_builds_correctly() {
+    LazyLock::force(&TEST_TRACING);
     let mut agents: AgentConfig = HashMap::new();
     agents.insert(AgentID::Char('c'), AgentSettings::default());
     agents.insert(
@@ -76,27 +84,26 @@ async fn config_builds_correctly() {
     );
     let expected = Config {
         pwd: pwd(),
-        model: Some(ModelConfig {
+        model: ModelConfig {
             provider: ModelProvider::Anthropic,
             api_key: "invalid".to_owned(),
-        }),
+        },
         agents: Some(agents),
         database: Some(DatabaseConfig {
             namespace: "espx".to_owned(),
             database: "espx".to_owned(),
             user: "root".to_owned(),
             pass: "root".to_owned(),
-            port: DFLT_PORT.to_owned(),
+            protocol: espx_lsp_server::config::database::Protocol::Ws,
+            ..Default::default()
         }),
     };
 
     let mut cfg = test_config(true).unwrap();
-    cfg.model.as_mut().and_then(|mcfg| {
-        mcfg.api_key = "invalid".to_string();
-        Some(mcfg)
-    });
+    cfg.model.api_key = "invalid".to_string();
 
     assert_eq!(expected, cfg);
+    warn!("config: {cfg:#?}");
 
     let state = LspState::new(cfg).await.unwrap();
     let global_agent = state.agents.get_agent_ref(AgentID::Global).unwrap();

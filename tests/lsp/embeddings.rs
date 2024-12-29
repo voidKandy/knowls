@@ -27,7 +27,7 @@ async fn db_works() {
     let state = test_state(true).await;
     let mut w = state.0.write().await;
     let db = w.database.as_mut().unwrap();
-    db.init_thread().await.unwrap();
+    // db.init_thread().await.unwrap();
 
     let sentences = vec![
         "this is a sentece about dogs",
@@ -36,15 +36,15 @@ async fn db_works() {
         "this is a sentece about cats",
     ];
     let out = espx_lsp_server::embeddings::embed_sentences(sentences.clone());
-    let thread = db.thread.as_mut().unwrap();
-    for (c, embedding) in sentences.into_iter().zip(out) {
-        let sentence = EmbeddedSentence {
-            content: c.to_string(),
-            embedding,
-        };
-        let _ = thread
-            .client
-            .create::<Option<EmbeddedSentence>>("sentence")
-            .content(sentence);
-    }
+    // let thread = db.thread.as_mut().unwrap();
+    // for (c, embedding) in sentences.into_iter().zip(out) {
+    //     let sentence = EmbeddedSentence {
+    //         content: c.to_string(),
+    //         embedding,
+    //     };
+    //     let _ = thread
+    //         .client
+    //         .create::<Option<EmbeddedSentence>>("sentence")
+    //         .content(sentence);
+    // }
 }

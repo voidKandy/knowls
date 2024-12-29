@@ -3,10 +3,7 @@ use super::{
     parsing::{comments::ParsedComment, tokens::TokenVec},
     InteractLspMessage, InteractVar,
 };
-use crate::{
-    handle::{buffer_operations::BufferOpChannelSender, error::HandleResult},
-    state::LspState,
-};
+use crate::{handle::buffer_operations::BufferOpChannelSender, state::LspState, MainResult};
 use lsp_types::{Diagnostic, Uri};
 use tokio::sync::RwLockWriteGuard;
 
@@ -52,7 +49,7 @@ impl<'i> ParsedComment<'i> {
         sender: &mut BufferOpChannelSender,
         message: impl Into<InteractLspMessage>,
         doc_info: InteractDocumentInfo<'i>,
-    ) -> HandleResult<()> {
+    ) -> MainResult<()> {
         if let Some(interact) = &self.interact {
             let message = Into::<InteractLspMessage>::into(message);
 
