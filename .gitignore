@@ -1,4 +1,5 @@
 /target
+.fastembed_cache/
 /data
 /testing/espx-ls.toml
 /testing/.espx-ls
