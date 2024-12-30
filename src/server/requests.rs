@@ -3,9 +3,9 @@ use super::{
     show_request_err,
 };
 use crate::{
-    handle::BufferOpChannelJoinHandle,
     interact::{execution::InteractDocumentInfo, InteractLspRequest},
     other_err,
+    server::BufferOpChannelJoinHandle,
     state::SharedState,
     MainResult,
 };

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    handle::buffer_operations::BufferOpChannelHandler, state::LspState, MainErr, MainResult,
+    server::buffer_operations::BufferOpChannelHandler, state::LspState, MainErr, MainResult,
 };
 use buffer_operations::BufferOpChannelSender;
 use lsp_server::Message as LSPMessage;

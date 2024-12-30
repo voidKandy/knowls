@@ -13,6 +13,19 @@ pub struct DatabaseConfig {
     pub protocol: Protocol,
 }
 
+impl Default for DatabaseConfig {
+    fn default() -> Self {
+        Self {
+            namespace: "namespace".to_string(),
+            database: "database".to_string(),
+            user: "user".to_string(),
+            pass: "pass".to_string(),
+            port: "19917".to_string(),
+            host: "127.0.0.1".to_string(),
+            protocol: Protocol::Mem,
+        }
+    }
+}
 /// https://docs.rs/surrealdb/latest/surrealdb/engine/any/fn.connect.html
 /// Surreal supports more, but I've opted to only allow these
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -84,7 +97,7 @@ impl Serialize for Protocol {
 }
 
 impl Protocol {
-    const fn as_str(&self) -> &'static str {
+    pub const fn as_str(&self) -> &'static str {
         match self {
             Self::Ws => "ws",
             Self::Wss => "wss",
@@ -94,32 +107,6 @@ impl Protocol {
             Self::File => "file",
             Self::Rocksdb => "rocksdb",
             Self::Surrealkv => "surrealkv",
-        }
-    }
-}
-
-impl IntoEndpoint for &DatabaseConfig {
-    fn into_endpoint(self) -> surrealdb::Result<surrealdb::opt::Endpoint> {
-        let root = Root {
-            username: &self.user,
-            password: &self.pass,
-        };
-        let config = surrealdb::opt::Config::new().user(root);
-        let url = format!("{}://{}:{}", self.protocol.as_str(), self.host, self.port);
-        (url, config).into_endpoint()
-    }
-}
-
-impl Default for DatabaseConfig {
-    fn default() -> Self {
-        Self {
-            namespace: "namespace".to_string(),
-            database: "database".to_string(),
-            user: "user".to_string(),
-            pass: "pass".to_string(),
-            port: "19917".to_string(),
-            host: "127.0.0.1".to_string(),
-            protocol: Protocol::Mem,
         }
     }
 }

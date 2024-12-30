@@ -1,5 +1,5 @@
 use crate::{
-    handle::{self, buffer_operations::BufferOpChannelStatus},
+    server::{self, buffer_operations::BufferOpChannelStatus},
     sockets::{init_clientside_listener_and_stream, CLIENTSIDE_RELAY_ADDR, SERVERSIDE_RELAY_ADDR},
     state::SharedState,
     MainResult,
@@ -62,14 +62,14 @@ pub async fn from_relay_recv_loop(
                     if let Some(next_msg) = shared_message_queue.write().await.pop() {
                         match match next_msg {
                             lsp_server::Message::Notification(not) => {
-                                handle::notifications::handle_notification(not, state.clone()).await
+                                server::notifications::handle_notification(not, state.clone()).await
                             }
                             lsp_server::Message::Request(req) => {
                                 if req.method.as_str() == "shutdown" {
                                     warn!("shutting down server");
                                     return;
                                 }
-                                handle::requests::handle_request(req, state.clone()).await
+                                server::requests::handle_request(req, state.clone()).await
                             }
                             _ => Err(std::io::Error::other("No handler for responses").into()),
                         } {

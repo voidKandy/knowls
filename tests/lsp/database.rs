@@ -12,7 +12,7 @@ use espx_lsp_server::{
     // embeddings,
     interact::parsing::lexer::Lexer,
 };
-use std::{io::Read, sync::LazyLock};
+use std::{io::Read, os::unix::process::CommandExt, sync::LazyLock};
 use tracing::warn;
 
 #[tokio::test]

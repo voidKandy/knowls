@@ -3,7 +3,7 @@ use super::{
     parsing::{comments::ParsedComment, tokens::TokenVec},
     InteractLspMessage, InteractVar,
 };
-use crate::{handle::buffer_operations::BufferOpChannelSender, state::LspState, MainResult};
+use crate::{server::buffer_operations::BufferOpChannelSender, state::LspState, MainResult};
 use lsp_types::{Diagnostic, Uri};
 use tokio::sync::RwLockWriteGuard;
 

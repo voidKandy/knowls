@@ -12,8 +12,8 @@ use super::{
 };
 use crate::{
     agents::{message_stack_into_marked_string, AgentID, Agents},
-    handle::buffer_operations::BufferOperation,
     other_err,
+    server::buffer_operations::BufferOperation,
     state::LspState,
     MainErr, MainResult,
 };
@@ -142,7 +142,7 @@ impl<'i, 'g> LspMessageInteract<'i, 'g, AgentInteractExArgs<'i>> for AgentIntera
         args: AgentInteractExArgs<'i>,
         rq_id: RequestId,
         params: impl Into<InteractLspRequest>,
-        sender: &mut crate::handle::buffer_operations::BufferOpChannelSender,
+        sender: &mut crate::server::buffer_operations::BufferOpChannelSender,
     ) -> MainResult<()> {
         match Into::<InteractLspRequest>::into(params) {
             InteractLspRequest::GotoDef(goto) => {
@@ -250,7 +250,7 @@ impl<'i, 'g> LspMessageInteract<'i, 'g, AgentInteractExArgs<'i>> for AgentIntera
         &self,
         args: AgentInteractExArgs<'i>,
         noti: impl Into<InteractLspNotification>,
-        sender: &mut crate::handle::buffer_operations::BufferOpChannelSender,
+        sender: &mut crate::server::buffer_operations::BufferOpChannelSender,
     ) -> MainResult<()> {
         match Into::<InteractLspNotification>::into(noti) {
             InteractLspNotification::Save(did_save) => {

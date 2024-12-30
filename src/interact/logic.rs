@@ -2,7 +2,7 @@ use super::{
     agent::AgentInteract, database::DBInteract, execution::InteractDocumentInfo,
     parsing::comments::ParsedComment,
 };
-use crate::{handle::buffer_operations::BufferOpChannelSender, state::LspState, MainResult};
+use crate::{server::buffer_operations::BufferOpChannelSender, state::LspState, MainResult};
 use lsp_server::RequestId;
 use lsp_types::{
     Diagnostic, DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,

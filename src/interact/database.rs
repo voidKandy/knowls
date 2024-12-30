@@ -4,7 +4,7 @@ use super::{
     parsing::comments::ParsedComment,
     InteractLspRequest,
 };
-use crate::{handle::buffer_operations::BufferOperation, state::LspState, MainErr, MainResult};
+use crate::{server::buffer_operations::BufferOperation, state::LspState, MainErr, MainResult};
 use lsp_server::RequestId;
 use lsp_types::{
     Diagnostic, DiagnosticSeverity, HoverContents, MessageType, Range, ShowMessageParams,
@@ -61,7 +61,7 @@ impl<'i, 'g> LspMessageInteract<'i, 'g, DBInteractExArgs<'i, 'g>> for DBInteract
         &self,
         args: DBInteractExArgs<'i, 'g>,
         noti: impl Into<super::InteractLspNotification>,
-        sender: &mut crate::handle::buffer_operations::BufferOpChannelSender,
+        sender: &mut crate::server::buffer_operations::BufferOpChannelSender,
     ) -> MainResult<()> {
         Ok(())
     }
@@ -71,7 +71,7 @@ impl<'i, 'g> LspMessageInteract<'i, 'g, DBInteractExArgs<'i, 'g>> for DBInteract
         args: DBInteractExArgs<'i, 'g>,
         rq_id: RequestId,
         params: impl Into<super::InteractLspRequest>,
-        sender: &mut crate::handle::buffer_operations::BufferOpChannelSender,
+        sender: &mut crate::server::buffer_operations::BufferOpChannelSender,
     ) -> MainResult<()> {
         match Into::<InteractLspRequest>::into(params) {
             InteractLspRequest::Hover(_hover) => {
