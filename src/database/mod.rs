@@ -1,4 +1,5 @@
 pub mod models;
+pub mod query_builder;
 
 use crate::{config::database::DatabaseConfig, MainResult};
 use serde::Deserialize;

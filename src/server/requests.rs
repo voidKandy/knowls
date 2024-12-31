@@ -94,6 +94,9 @@ pub async fn handle_goto_definition(
         .execute_from_lsp_message(&mut w, &mut sender, (request, req.id), doc_info)
         .await?;
 
+    if w.database.is_some() {
+        w.save_agent_memories_to_database().await?;
+    }
     Ok(())
 }
 

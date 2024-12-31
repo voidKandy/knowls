@@ -1,235 +1,83 @@
-use super::{DatabaseStruct, IntoOneOf};
-use crate::{
-    interact::parsing::tokens::{Token, TokenVec},
-    other_err,
-    util::OneOf,
-    MainErr, MainResult,
-};
-use base64::{prelude::BASE64_URL_SAFE_NO_PAD, Engine};
+use crate::interact::parsing::tokens::{Token, TokenVec};
 use lsp_types::Uri;
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
-use surrealdb::sql::Thing;
-use tracing::warn;
+use surrealdb::sql::{Id, Thing};
+
+use super::DBItem;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DBBlock {
     pub id: Thing,
     pub uri: Uri,
+    pub idx: usize,
     pub content: String,
-    pub content_embedding: Option<Vec<f32>>,
+    pub embedding: Option<Vec<f32>>,
 }
 
-const LINES_PER_BLOCK: usize = 25;
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-struct DBBlockID(String);
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct DBBlockParams {
-    id: DBBlockID,
-    pub uri: Option<Uri>,
-    pub content: Option<String>,
-    content_embedding: Option<Vec<f32>>,
-}
-
-impl TryFrom<Thing> for DBBlockID {
-    type Error = MainErr;
-    fn try_from(value: Thing) -> Result<Self, Self::Error> {
-        match value.id {
-            surrealdb::sql::Id::String(string) => Ok(Self(string)),
-            _ => Err(other_err!(
-                "{:#?} cannot be turned into a DBBlockID",
-                value.id
-            )),
-        }
-    }
-}
-
-impl From<(&Uri, usize)> for DBBlockID {
-    fn from((uri, doc_idx): (&Uri, usize)) -> Self {
-        let encoded = BASE64_URL_SAFE_NO_PAD.encode(uri.as_str());
-        let id = format!("{doc_idx}{encoded}");
-        warn!("created id: {id}");
-        DBBlockID(id)
-    }
-}
-
-impl TryInto<(Uri, usize)> for DBBlockID {
-    type Error = MainErr;
-    fn try_into(self) -> Result<(Uri, usize), Self::Error> {
-        let doc_idx: usize = self.0[..=0].parse()?;
-        let rest = &self.0[1..];
-        let uri_str = BASE64_URL_SAFE_NO_PAD
-            .decode(rest)?
-            .into_iter()
-            .map(|int| int as char)
-            .collect::<String>();
-        let uri = Uri::from_str(&uri_str)?;
-        Ok((uri, doc_idx))
-    }
-}
-
-impl DBBlockParams {
-    pub fn new(uri: Uri, idx_in_doc: usize, content: Option<String>) -> Self {
-        let id = DBBlockID::from((&uri, idx_in_doc));
-        Self {
-            id,
-            uri: Some(uri),
-            content,
-            content_embedding: None,
-        }
-    }
-}
-
-pub fn block_params_from(tokens: &TokenVec, uri: Uri) -> Vec<DBBlockParams> {
-    let mut all = vec![];
-    let mut whole_doc_buffer = String::new();
-    for token in tokens.as_ref() {
-        if let Token::Block(block) = token {
-            whole_doc_buffer.push_str(&block);
-        }
-    }
-
-    let lines = whole_doc_buffer.lines().collect::<Vec<&str>>();
-    let mut chunks_taken = 0;
-
-    loop {
-        let start = chunks_taken * LINES_PER_BLOCK;
-        let content: String = lines
-            .iter()
-            .skip(start)
-            .take(LINES_PER_BLOCK)
-            .map(|slice| *slice)
-            .collect::<Vec<&str>>()
-            .join("\n");
-
-        if content.trim().is_empty() {
-            break;
-        }
-
-        let block_params = DBBlockParams::new(uri.clone(), chunks_taken, Some(content));
-
-        all.push(block_params);
-        chunks_taken += 1;
-    }
-    all
-}
-
-impl<'l> IntoOneOf<'l, DBBlock, DBBlockParams> for DBBlock {
-    fn one_of(me: &'l Self) -> OneOf<&'l DBBlock, &'l DBBlockParams> {
-        OneOf::Left(me)
-    }
-}
-
-impl<'l> IntoOneOf<'l, DBBlock, DBBlockParams> for DBBlockParams {
-    fn one_of(me: &'l Self) -> OneOf<&'l DBBlock, &'l DBBlockParams> {
-        OneOf::Right(me)
-    }
-}
-
-impl<'l> DatabaseStruct<'l, DBBlockParams> for DBBlock {
-    fn db_id() -> &'static str {
-        "blocks"
-    }
-
+impl DBItem for DBBlock {
+    const DB_ID: &str = "block";
     fn thing(&self) -> &Thing {
         &self.id
     }
-    fn content(oneof: &'l impl IntoOneOf<'l, Self, DBBlockParams>) -> MainResult<String> {
-        match IntoOneOf::<Self, DBBlockParams>::one_of(oneof) {
-            OneOf::Left(me) => {
-                let content_embedding_string = {
-                    if let Some(emb) = &me.content_embedding {
-                        format!("content_embedding: {},", serde_json::to_value(emb)?)
-                    } else {
-                        String::new()
-                    }
-                };
+}
 
-                Ok(format!(
-                    r#"CONTENT {{
-                uri: {},
-                content: {},
-                {}
-                }}"#,
-                    serde_json::to_value(&me.uri)?,
-                    serde_json::to_value(&me.content)?,
-                    content_embedding_string
-                ))
-            }
-            OneOf::Right(params) => {
-                let uri_string = {
-                    if let Some(uri) = &params.uri {
-                        format!(",uri: {}", serde_json::to_value(uri.as_str())?)
-                    } else {
-                        String::new()
-                    }
-                };
+impl DBBlock {
+    pub const LINES_PER_BLOCK: usize = 25;
 
-                let content_string = {
-                    if let Some(content) = &params.content {
-                        format!(",content: {}", serde_json::to_value(content)?)
-                    } else {
-                        String::new()
-                    }
-                };
-
-                let content_embedding_string = {
-                    if let Some(emb) = &params.content_embedding {
-                        format!(",content_embedding: {}", serde_json::to_value(emb)?)
-                    } else {
-                        String::new()
-                    }
-                };
-
-                Ok(format!(
-                    r#"CONTENT {{ {} }}"#,
-                    [uri_string, content_string, content_embedding_string]
-                        .join(" ")
-                        .trim()
-                        .trim_start_matches(','),
-                ))
-            }
+    fn new(uri: Uri, idx: usize, content: String) -> Self {
+        let id = Id::String(format!("{}{}", uri.path().to_string(), idx));
+        let id = Thing::from((Self::DB_ID, id));
+        Self {
+            id,
+            idx,
+            uri,
+            content,
+            embedding: None,
         }
     }
 
-    fn upsert(params: &DBBlockParams) -> MainResult<String> {
-        if params.uri.is_none() || params.content.is_none() {
-            return Err(other_err!(
-                "All fields need to be Some for a create statement, got: {:?} {:?} ",
-                params.uri,
-                params.content,
-            ));
+    pub fn from_tokens(tokens: &TokenVec, uri: Uri) -> Vec<Self> {
+        let mut all = vec![];
+        let mut whole_doc_buffer = String::new();
+        for token in tokens.as_ref() {
+            if let Token::Block(block) = token {
+                whole_doc_buffer.push_str(&block);
+            }
         }
 
-        Ok(format!(
-            "UPSERT {}:{} {};",
-            Self::db_id(),
-            params.id.0,
-            Self::content(params)?
-        ))
+        let lines = whole_doc_buffer.lines().collect::<Vec<&str>>();
+        let mut chunks_taken = 0;
+
+        loop {
+            let start = chunks_taken * Self::LINES_PER_BLOCK;
+            let content: String = lines
+                .iter()
+                .skip(start)
+                .take(Self::LINES_PER_BLOCK)
+                .map(|slice| *slice)
+                .collect::<Vec<&str>>()
+                .join("\n");
+
+            if content.trim().is_empty() {
+                break;
+            }
+
+            let block_params = Self::new(uri.clone(), chunks_taken, content);
+
+            all.push(block_params);
+            chunks_taken += 1;
+        }
+        all
     }
 }
 
 mod tests {
-    use super::{block_params_from, DBBlockParams};
-    use crate::{
-        database::models::block::{DBBlockID, LINES_PER_BLOCK},
-        interact::parsing::lexer::Lexer,
-    };
+    use crate::{database::models::DBItem, interact::parsing::lexer::Lexer};
     use lsp_types::Uri;
     use std::str::FromStr;
+    use surrealdb::sql::Thing;
 
-    #[test]
-    fn block_id_encoding_decoding() {
-        let test_doc_1_uri = Uri::from_str("test_doc_1.rs").unwrap();
-        let id = DBBlockID::from((&test_doc_1_uri, 0));
-        let (uri, idx): (Uri, usize) = id.try_into().unwrap();
-
-        assert_eq!(uri, test_doc_1_uri);
-        assert_eq!(0, idx);
-    }
+    use super::DBBlock;
 
     #[test]
     fn correctly_parses_block() {
@@ -273,7 +121,7 @@ fn again_again_again() {
         let mut lexer = Lexer::new(&input, "rs");
         let tokens = lexer.lex_input();
 
-        let first_chunk_content = Some(String::from(
+        let first_chunk_content = String::from(
             r#" 
 
 fn main() {
@@ -299,27 +147,31 @@ fn again_again() {
         .expect("failed to read io");
 }
 "#,
-        ));
-        let second_chunk_content = Some(String::from(
+        );
+        let second_chunk_content = String::from(
             r#"fn again_again_again() {
     let mut raw = String::new();
     io::stdin()
         .read_to_string(&mut raw)
         .expect("failed to read io");
 }"#,
-        ));
-        let expected = vec![
-            DBBlockParams::new(test_doc_1_uri.clone(), 0, first_chunk_content),
-            DBBlockParams::new(test_doc_1_uri.clone(), 1, second_chunk_content),
-        ];
+        );
 
-        let out = block_params_from(&tokens, test_doc_1_uri);
+        // let id1 = DBBlock::id(&test_doc_1_uri, 0);
+        // let id2 = DBBlock::id(&test_doc_1_uri, 1);
+
+        let doc_block1 = DBBlock::new(test_doc_1_uri.clone(), 0, first_chunk_content);
+        let doc_block2 = DBBlock::new(test_doc_1_uri.clone(), 1, second_chunk_content);
+
+        let expected = vec![doc_block1, doc_block2];
+
+        let out = DBBlock::from_tokens(&tokens, test_doc_1_uri);
 
         for (i, val) in out.iter().enumerate() {
             if i == 0 {
                 assert_eq!(
-                    val.content.clone().unwrap().lines().count(),
-                    LINES_PER_BLOCK - 1
+                    val.content.clone().lines().count(),
+                    DBBlock::LINES_PER_BLOCK - 1
                 );
             }
             if !expected.contains(&val) {

@@ -2,7 +2,7 @@ use crate::{
     helpers::{handler_tests_state, test_buff_op_channel, TEST_TRACING},
     test_docs::test_doc_1,
 };
-use espx_lsp_server::{agents::AgentID, handle::notifications::handle_didSave};
+use espx_lsp_server::{agents::AgentID, server::notifications::handle_didSave};
 use lsp_types::{DidSaveTextDocumentParams, TextDocumentIdentifier, Uri};
 use serde::Serialize;
 use std::sync::LazyLock;

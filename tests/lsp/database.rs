@@ -4,15 +4,16 @@ use crate::{
 };
 use espionox::prelude::{Message, MessageStack};
 use espx_lsp_server::{
-    database::models::{
-        agent_memories::{DBAgentID, DBAgentMemory, DBAgentMemoryParams},
-        block::{block_params_from, DBBlock, DBBlockParams},
-        DatabaseStruct, FieldQuery, QueryBuilder,
+    agents::AgentID,
+    database::{
+        models::{agent_memories::DBAgentMemory, block::DBBlock, DBItem},
+        query_builder::{FieldQuery, QueryBuilder},
     },
-    // embeddings,
     interact::parsing::lexer::Lexer,
 };
+use serde::Serialize;
 use std::{io::Read, os::unix::process::CommandExt, sync::LazyLock};
+use surrealdb::sql::Id;
 use tracing::warn;
 
 #[tokio::test]
@@ -85,7 +86,7 @@ async fn health_test() {
 #[tokio::test]
 async fn tokens_crud_test() {
     LazyLock::force(&TEST_TRACING);
-    let mut state = test_state(true).await;
+    let state = test_state(true).await;
     let mut w = state.0.try_write().unwrap();
     let all_test_docs = vec![
         test_doc_1(),
@@ -96,7 +97,10 @@ async fn tokens_crud_test() {
     ];
 
     // let registry = w.registry.clone();
-    let mut all_block_params = vec![];
+    let mut all_blocks: Vec<Vec<DBBlock>> = vec![];
+    let db = w.database.as_mut().unwrap();
+    let _: Vec<DBBlock> = db.client.delete("block").await.unwrap();
+
     for (uri, content) in all_test_docs.iter() {
         let uri_str = uri.to_string();
 
@@ -107,69 +111,76 @@ async fn tokens_crud_test() {
         let mut lexer = Lexer::new(&content, ext);
         let tokens = lexer.lex_input();
 
-        all_block_params.push(block_params_from(&tokens, uri.clone()));
-    }
+        let blocks = DBBlock::from_tokens(&tokens, uri.clone());
 
-    let db = w.database.as_mut().unwrap();
-    let _: Vec<DBBlock> = db.client.delete(DBBlock::db_id()).await.unwrap();
-
-    let mut query = QueryBuilder::begin();
-    for document_params in all_block_params.iter() {
-        for params in document_params {
-            query.push(&DBBlock::upsert(params).unwrap());
+        let mut ret_blocks = vec![];
+        for b in blocks {
+            let content = b.content_without_id().unwrap();
+            let ret: Option<DBBlock> = db
+                .client
+                .upsert(("block", b.id.to_string()))
+                .content(content)
+                .await
+                .unwrap();
+            ret_blocks.push(ret.unwrap())
         }
+        all_blocks.push(ret_blocks);
     }
-    db.client.query(query.end()).await.unwrap();
 
-    let all: Vec<DBBlock> = db.client.select(DBBlock::db_id()).await.unwrap();
+    let all: Vec<DBBlock> = db.client.select("block").await.unwrap();
     assert_eq!(
         all.len(),
-        all_block_params
-            .iter()
-            .fold(0, |acc, vec| { acc + vec.len() })
+        all_blocks.iter().fold(0, |acc, vec| { acc + vec.len() })
     );
 
-    let mut query = QueryBuilder::begin();
     let first_doc_uri = all_test_docs.iter().nth(0).cloned().unwrap().0;
-    let len_not_that_uri = all_block_params.iter().fold(0, |acc, vec| {
-        acc + vec
-            .iter()
-            .filter(|p| p.uri.as_ref() != Some(&first_doc_uri))
-            .count()
-    });
+    let all_that_uri: Vec<&Id> = all_blocks
+        .iter()
+        .find(|vec| vec[0].uri == first_doc_uri)
+        .unwrap()
+        .iter()
+        .map(|b| &b.id.id)
+        .collect();
 
-    query.push(&DBBlock::delete(&FieldQuery::new("uri", first_doc_uri).unwrap()).unwrap());
+    // query.push(&DBBlock::delete(&::new("uri", first_doc_uri).unwrap()).unwrap());
 
-    db.client.query(query.end()).await.unwrap();
+    // db.client.query(query.end()).await.unwrap();
 
-    let all: Vec<DBBlock> = db.client.select(DBBlock::db_id()).await.unwrap();
-    assert_eq!(all.len(), len_not_that_uri);
+    let expected_amt: usize = all_blocks.len() - all_that_uri.len();
+    for id in all_that_uri {
+        let b: Option<DBBlock> = db.client.delete(("block", id.to_string())).await.unwrap();
+        warn!("deleted {b:#?}");
+    }
+
+    let all: Vec<DBBlock> = db.client.select("block").await.unwrap();
+    assert_eq!(all.len(), expected_amt);
 
     let second_doc_uri = all_test_docs.iter().nth(1).cloned().unwrap().0;
-    let fq = FieldQuery::new("uri", second_doc_uri).unwrap();
-
-    let all_to_update: Vec<DBBlock> = db
-        .client
-        .query(DBBlock::select(Some(&fq), None).unwrap())
-        .await
-        .unwrap()
-        .take(0)
-        .unwrap();
 
     let mut q = QueryBuilder::begin();
-
+    let fq = FieldQuery::new("uri", second_doc_uri).unwrap();
+    let select = fq.select("uri", None);
+    q.push(&select);
+    let all_to_update: Vec<DBBlock> = db.client.query(q.end()).await.unwrap().take(0).unwrap();
     let new_content = "All blocks of this uri have the same content now".to_string();
 
+    let mut updated: Vec<DBBlock> = vec![];
     for mut dbb in all_to_update {
         dbb.content = new_content.to_owned();
-        q.push(&DBBlock::update(dbb.thing(), &dbb).unwrap());
+        let content = dbb.content_without_id().unwrap();
+        let block: Option<DBBlock> = db
+            .client
+            .update(("block", dbb.id.to_string()))
+            .content(content)
+            .await
+            .unwrap();
+        updated.push(block.unwrap());
     }
-    let updated: Vec<DBBlock> = db.client.query(&q.end()).await.unwrap().take(0).unwrap();
 
     for block in updated {
         assert_eq!(block.content.as_str(), new_content.as_str());
     }
-    let _: Vec<DBBlock> = db.client.delete(DBBlock::db_id()).await.unwrap();
+    let _: Vec<DBBlock> = db.client.delete("block").await.unwrap();
 }
 
 #[tokio::test]
@@ -179,7 +190,7 @@ async fn memories_crud_test() {
     let mut w = state.0.try_write().unwrap();
 
     let db = w.database.as_mut().unwrap();
-    let _: Vec<DBAgentMemory> = db.client.delete(DBAgentMemory::db_id()).await.unwrap();
+    let _: Vec<DBAgentMemory> = db.client.delete("agent_memory").await.unwrap();
 
     let test_mems_1: MessageStack = vec![
         Message::new_system("some system prompt"),
@@ -199,36 +210,36 @@ async fn memories_crud_test() {
 
     let agent_char_1 = 'c';
     let (agent_uri_2, _) = test_doc_1();
+    let id = AgentID::Char(agent_char_1);
+    let memory = DBAgentMemory::new(&id, test_mems_1);
 
-    let mut all_params = vec![];
+    let _: Option<DBAgentMemory> = db
+        .client
+        .upsert(("agent_memory", id.to_string()))
+        .content(memory.content_without_id().unwrap())
+        .await
+        .unwrap();
 
-    all_params.push(DBAgentMemoryParams::new(&agent_char_1, Some(&test_mems_1)));
-    all_params.push(DBAgentMemoryParams::new(&agent_uri_2, Some(&test_mems_2)));
+    let id = AgentID::from(&agent_uri_2);
+    let memory = DBAgentMemory::new(&id, test_mems_2.clone());
 
-    let mut q = QueryBuilder::begin();
+    let _: Option<DBAgentMemory> = db
+        .client
+        .upsert(("agent_memory", id.to_string()))
+        .content(memory.content_without_id().unwrap())
+        .await
+        .unwrap();
 
-    for param in all_params.iter() {
-        q.push(&DBAgentMemory::upsert(&param).unwrap())
-    }
+    let all: Vec<DBAgentMemory> = db.client.select("agent_memory").await.unwrap();
 
-    db.client.query(q.end()).await.unwrap();
-
-    let all: Vec<DBAgentMemory> = db.client.select(DBAgentMemory::db_id()).await.unwrap();
-
-    assert_eq!(all.len(), all_params.len(),);
+    assert_eq!(all.len(), 2);
 
     let agent_2: DBAgentMemory = db
         .client
-        .select((
-            DBAgentMemory::db_id(),
-            DBAgentID::from(&agent_uri_2).to_string(),
-        ))
+        .select(("agent_memory", AgentID::from(&agent_uri_2).to_string()))
         .await
         .unwrap()
         .unwrap();
 
     assert_eq!(agent_2.messages, test_mems_2);
-    // let mut q = QueryBuilder::begin();
-
-    // q.push(&DBBlock::delete(&FieldQuery::new("uri", ).unwrap()).unwrap());
 }

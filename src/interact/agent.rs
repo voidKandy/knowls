@@ -352,7 +352,6 @@ impl<'i, 'g> LspMessageInteract<'i, 'g, AgentInteractExArgs<'i>> for AgentIntera
             },
         };
 
-        return Some(ex_args);
-        None
+        Some(ex_args)
     }
 }

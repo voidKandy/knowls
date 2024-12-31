@@ -2,11 +2,7 @@ use crate::{
     agents::{AgentID, Agents},
     config::Config,
     database::{
-        models::{
-            agent_memories::{DBAgentMemory, DBAgentMemoryParams},
-            block::{block_params_from, DBBlock},
-            DatabaseStruct, QueryBuilder,
-        },
+        models::{agent_memories::DBAgentMemory, block::DBBlock, DBItem},
         Database,
     },
     interact::{
@@ -23,6 +19,7 @@ use crate::{
 };
 use lsp_types::Uri;
 use std::{collections::HashMap, sync::Arc};
+use surrealdb::sql::{Id, Thing};
 use tokio::sync::RwLock;
 use tracing::warn;
 
@@ -78,62 +75,67 @@ impl<'i> LspState<'i> {
     }
 
     pub async fn save_agent_memories_to_database(&self) -> MainResult<()> {
-        let mut all_agent_params = vec![];
         let global_cache = &self
             .agents
             .get_agent_ref(AgentID::Global)
             .expect("No global agent?")
             .cache;
 
-        all_agent_params.push(DBAgentMemoryParams::new(
-            &AgentID::Global,
-            Some(&global_cache),
-        ));
-
-        for (id, agent) in self.agents.iter_agents() {
-            let cache = &agent.cache;
-            all_agent_params.push(DBAgentMemoryParams::new(id, Some(&cache)));
-        }
-
         let db = self
             .database
             .as_ref()
             .ok_or(other_err!("Database not present"))?;
 
-        let mut q = QueryBuilder::begin();
+        let id: Id = (&AgentID::Global).into();
+        let global = DBAgentMemory {
+            id: Thing::from((DBAgentMemory::DB_ID, id)),
+            messages: global_cache.to_owned(),
+        };
 
-        for param in all_agent_params {
-            q.push(&DBAgentMemory::upsert(&param)?)
+        let content = serde_json::to_value(&global).unwrap()["id"].take();
+
+        let _: Option<DBAgentMemory> = db
+            .client
+            .upsert(("agent_memory", global.id.to_string()))
+            .content(content)
+            .await?;
+
+        for (id, agent) in self.agents.iter_agents() {
+            let messages = agent.cache.clone();
+            let id: Id = id.into();
+            let mem = DBAgentMemory {
+                id: Thing::from((DBAgentMemory::DB_ID, id)),
+                messages,
+            };
+
+            let content = serde_json::to_value(&mem).unwrap()["id"].take();
+            let _: Option<DBAgentMemory> = db
+                .client
+                .upsert(("agent_memory", mem.id.to_string()))
+                .content(content)
+                .await?;
         }
-
-        // if let Some(thread) = db.thread.as_ref() {
-        //     thread.client.query(q.end()).await?;
-        // }
 
         Ok(())
     }
 
     pub async fn save_docs_to_database(&self) -> MainResult<()> {
-        let mut all_block_params = vec![];
-        for (uri, tokens) in &self.documents {
-            let mut params = block_params_from(&tokens, uri.clone());
-            all_block_params.append(&mut params);
-        }
-
         let db = self
             .database
             .as_ref()
             .ok_or(other_err!("Database not present"))?;
 
-        let mut q = QueryBuilder::begin();
-
-        for param in all_block_params {
-            q.push(&DBBlock::upsert(&param)?)
+        for (uri, tokens) in &self.documents {
+            for b in DBBlock::from_tokens(&tokens, uri.clone()) {
+                let content = serde_json::to_value(&b).unwrap()["id"].take();
+                let _: Option<DBBlock> = db
+                    .client
+                    .upsert(("block", b.id.to_string()))
+                    .content(content)
+                    .await?;
+            }
         }
 
-        // if let Some(thread) = db.thread.as_ref() {
-        //     thread.client.query(q.end()).await?;
-        // }
         Ok(())
     }
 

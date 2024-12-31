@@ -60,10 +60,11 @@ impl std::fmt::Display for AgentID {
         let dis = match self {
             Self::Global => "Global".to_string(),
             Self::Uri(uri_str) => {
-                let split = uri_str
-                    .rsplitn(3, std::path::MAIN_SEPARATOR)
-                    .collect::<Vec<&str>>();
-                format!("{}{}{}", split[1], std::path::MAIN_SEPARATOR, split[0])
+                // let split = uri_str
+                //     .rsplitn(3, std::path::MAIN_SEPARATOR)
+                //     .collect::<Vec<&str>>();
+                // format!("{}{}{}", split[1], std::path::MAIN_SEPARATOR, split[0])
+                uri_str.to_string()
             }
             Self::Char(char) => {
                 format!("Custom Agent({char})")

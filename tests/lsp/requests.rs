@@ -1,5 +1,5 @@
 use crate::helpers::{handler_tests_state, test_buff_op_channel, TEST_TRACING};
-use espx_lsp_server::handle::{
+use espx_lsp_server::server::{
     buffer_operations::{BufferOpChannelHandler, BufferOpChannelStatus, BufferOperation},
     requests::handle_goto_definition,
 };
