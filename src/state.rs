@@ -86,34 +86,22 @@ impl<'i> LspState<'i> {
             .as_ref()
             .ok_or(other_err!("Database not present"))?;
 
-        let id: Id = (&AgentID::Global).into();
-        let global = DBAgentMemory {
-            id: Thing::from((DBAgentMemory::DB_ID, id)),
-            messages: global_cache.to_owned(),
-        };
+        let global = DBAgentMemory::new(&AgentID::Global, global_cache.clone());
 
         let content = serde_json::to_value(&global).unwrap()["id"].take();
 
         let _: Option<DBAgentMemory> = db
             .client
-            .upsert(("agent_memory", global.id.to_string()))
+            .upsert(global.record_id())
             .content(content)
             .await?;
 
         for (id, agent) in self.agents.iter_agents() {
-            let messages = agent.cache.clone();
-            let id: Id = id.into();
-            let mem = DBAgentMemory {
-                id: Thing::from((DBAgentMemory::DB_ID, id)),
-                messages,
-            };
+            let mem = DBAgentMemory::new(&id, agent.cache.clone());
 
             let content = serde_json::to_value(&mem).unwrap()["id"].take();
-            let _: Option<DBAgentMemory> = db
-                .client
-                .upsert(("agent_memory", mem.id.to_string()))
-                .content(content)
-                .await?;
+            let _: Option<DBAgentMemory> =
+                db.client.upsert(mem.record_id()).content(content).await?;
         }
 
         Ok(())
@@ -128,11 +116,7 @@ impl<'i> LspState<'i> {
         for (uri, tokens) in &self.documents {
             for b in DBBlock::from_tokens(&tokens, uri.clone()) {
                 let content = serde_json::to_value(&b).unwrap()["id"].take();
-                let _: Option<DBBlock> = db
-                    .client
-                    .upsert(("block", b.id.to_string()))
-                    .content(content)
-                    .await?;
+                let _: Option<DBBlock> = db.client.upsert(b.record_id()).content(content).await?;
             }
         }
 

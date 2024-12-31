@@ -3,11 +3,11 @@ use lsp_types::Uri;
 use serde::{Deserialize, Serialize};
 use surrealdb::sql::{Id, Thing};
 
-use super::DBItem;
+use super::{DBItem, EmbeddedDBItem};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DBBlock {
-    pub id: Thing,
+    id: Thing,
     pub uri: Uri,
     pub idx: usize,
     pub content: String,
@@ -21,10 +21,22 @@ impl DBItem for DBBlock {
     }
 }
 
+impl EmbeddedDBItem for DBBlock {
+    fn embedding(&self) -> Option<&[crate::embeddings::EmbeddingFloat]> {
+        self.embedding.as_ref().map(|v| &**v)
+    }
+    fn update_with_embedding(&mut self, embedding: Vec<crate::embeddings::EmbeddingFloat>) {
+        self.embedding = Some(embedding);
+    }
+    fn content_to_embed(&self) -> &str {
+        &self.content
+    }
+}
+
 impl DBBlock {
     pub const LINES_PER_BLOCK: usize = 25;
 
-    fn new(uri: Uri, idx: usize, content: String) -> Self {
+    pub fn new(uri: Uri, idx: usize, content: String) -> Self {
         let id = Id::String(format!("{}{}", uri.path().to_string(), idx));
         let id = Thing::from((Self::DB_ID, id));
         Self {

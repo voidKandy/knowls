@@ -23,6 +23,7 @@ pub type MainResult<T> = std::result::Result<T, MainErr>;
 
 pub mod embeddings {
 
+    pub type EmbeddingFloat = f32;
     use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 
     use crate::MainResult;
@@ -47,8 +48,8 @@ pub mod embeddings {
         // Generate embeddings with the default batch size, 256
         let embeddings = model.embed(sentences, None)?;
 
-        println!("Embeddings length: {}", embeddings.len()); // -> Embeddings length: 4
-        println!("Embedding dimension: {}", embeddings[0].len()); // -> Embedding dimension: 384
+        tracing::warn!("Embeddings length: {}", embeddings.len()); // -> Embeddings length: 4
+        tracing::warn!("Embedding dimension: {}", embeddings[0].len()); // -> Embedding dimension: 384
         Ok(embeddings)
     }
 

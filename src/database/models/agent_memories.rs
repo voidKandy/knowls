@@ -8,7 +8,7 @@ use super::DBItem;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DBAgentMemory {
-    pub id: Thing,
+    id: Thing,
     pub messages: MessageStack,
 }
 
