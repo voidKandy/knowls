@@ -7,7 +7,7 @@ use super::{
         comments::ParsedComment,
         language_ext_from_uri,
         lexer::Lexer,
-        tokens::{Token, TokenVec},
+        tokens::{vec::TokenVec, Token},
     },
 };
 use crate::{
@@ -104,7 +104,7 @@ impl<'i> AgentInteractExArgs<'i> {
         for (i, comment) in prev_push_interacts {
             if new_tokens.get(i).is_some_and(|t| {
                 if let Token::Comment(c) = t {
-                    c != comment
+                    *c != *comment
                 } else {
                     true
                 }

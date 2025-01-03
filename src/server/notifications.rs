@@ -132,6 +132,8 @@ async fn handle_didOpen(
     let uri = text_doc_item.text_document.uri;
 
     let mut w = state.0.try_write()?;
+
+    if let Some(tokens) = w.documents.get(&uri) {}
     w.update_doc_and_agents_from_text(uri.clone(), &text)?;
     // let mut w = state.0.try_write()?;
     // this causes a crash?

@@ -11,7 +11,7 @@ use crate::{
             comments::ParsedComment,
             language_ext_from_uri,
             lexer::Lexer,
-            tokens::{Token, TokenVec},
+            tokens::{vec::TokenVec, Token},
         },
         InteractVar,
     },
@@ -99,9 +99,11 @@ impl<'i> LspState<'i> {
         for (id, agent) in self.agents.iter_agents() {
             let mem = DBAgentMemory::new(&id, agent.cache.clone());
 
-            let content = serde_json::to_value(&mem).unwrap()["id"].take();
-            let _: Option<DBAgentMemory> =
-                db.client.upsert(mem.record_id()).content(content).await?;
+            let _: Option<DBAgentMemory> = db
+                .client
+                .upsert(mem.record_id())
+                .content(mem.content_without_id().unwrap())
+                .await?;
         }
 
         Ok(())
@@ -115,8 +117,11 @@ impl<'i> LspState<'i> {
 
         for (uri, tokens) in &self.documents {
             for b in DBBlock::from_tokens(&tokens, uri.clone()) {
-                let content = serde_json::to_value(&b).unwrap()["id"].take();
-                let _: Option<DBBlock> = db.client.upsert(b.record_id()).content(content).await?;
+                let _: Option<DBBlock> = db
+                    .client
+                    .upsert(b.record_id())
+                    .content(b.content_without_id().unwrap())
+                    .await?;
             }
         }
 
@@ -165,7 +170,7 @@ impl<'i> LspState<'i> {
                 || new_tokens.get(i).is_some_and(|t| {
                     warn!("token exists at matching place: {t:#?}");
                     if let Token::Comment(c) = t {
-                        c != comment
+                        *c != *comment
                     } else {
                         false
                     }

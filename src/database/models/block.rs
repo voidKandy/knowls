@@ -1,4 +1,4 @@
-use crate::interact::parsing::tokens::{Token, TokenVec};
+use crate::interact::parsing::tokens::{vec::TokenVec, Token};
 use lsp_types::Uri;
 use serde::{Deserialize, Serialize};
 use surrealdb::sql::{Id, Thing};

@@ -1,6 +1,6 @@
 use super::{
     logic::LspMessageInteract,
-    parsing::{comments::ParsedComment, tokens::TokenVec},
+    parsing::{comments::ParsedComment, tokens::vec::TokenVec},
     InteractLspMessage, InteractVar,
 };
 use crate::{server::buffer_operations::BufferOpChannelSender, state::LspState, MainResult};

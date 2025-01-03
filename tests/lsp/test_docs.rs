@@ -22,6 +22,25 @@ struct ToBePushed;
     (test_doc_1_uri, test_doc_1)
 }
 
+pub fn test_doc_1diff() -> (Uri, String) {
+    let test_doc_1_uri = Uri::from_str("test_doc_1.rs").unwrap();
+    let test_doc_1 = r#"use std::io::{self, Read};
+
+// @_ 
+fn main() {
+    let mut raw = String::from("string");
+    io::stdin()
+        .read_to_string(&mut raw)
+        .expect("failed to read io");
+}
+
+// +_
+struct BePushed;
+    "#
+    .to_string();
+    (test_doc_1_uri, test_doc_1)
+}
+
 pub fn test_doc_2() -> (Uri, String) {
     let test_doc_2_uri = Uri::from_str("test_doc_2.rs").unwrap();
     let test_doc_2 = r#"

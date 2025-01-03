@@ -86,10 +86,11 @@ async fn get_relavent_blocks() {
         .collect();
 
     assert_eq!(similar, relavent_blocks);
+    let _: Vec<DBBlock> = db.client.delete(DBBlock::DB_ID).await.unwrap();
 }
 
 #[tokio::test]
-async fn tokens_crud_test() {
+async fn blocks_crud_test() {
     LazyLock::force(&TEST_TRACING);
     let state = test_state(true).await;
     let mut w = state.0.try_write().unwrap();
@@ -251,4 +252,5 @@ async fn memories_crud_test() {
         .unwrap();
 
     assert_eq!(agent_2.messages, test_mems_2);
+    let _: Vec<DBAgentMemory> = db.client.delete("agent_memory").await.unwrap();
 }

@@ -8,7 +8,7 @@ pub mod sockets;
 pub mod state;
 pub mod telemetry;
 pub mod ui;
-pub(crate) mod util;
+pub mod util;
 
 pub type MainErr = Box<dyn std::error::Error + Send + Sync + 'static>;
 

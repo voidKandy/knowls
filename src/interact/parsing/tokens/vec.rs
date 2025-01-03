@@ -1,43 +1,23 @@
-use super::comments::ParsedComment;
-use lsp_types::Position;
-use serde::{Deserialize, Serialize};
-use std::{
-    cmp::Ordering,
-    fmt::{Debug, Display},
-};
-use tracing::warn;
+use crate::util::Diff;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Token<'i> {
-    CommentStr,
-    Comment(ParsedComment<'i>),
-    Block(String),
-    End,
-}
+use super::{super::comments::ParsedComment, Token};
+use lsp_types::Position;
+use std::{cmp::Ordering, fmt::Debug};
+use tracing::warn;
 
 #[derive(Debug, Clone)]
 pub struct TokenVec<'i> {
-    vec: Vec<Token<'i>>,
+    pub(super) vec: Vec<Token<'i>>,
     comment_indices: Vec<usize>,
 }
+
 impl<'i> AsRef<Vec<Token<'i>>> for TokenVec<'i> {
     fn as_ref(&self) -> &Vec<Token<'i>> {
         &self.vec
     }
 }
 
-impl<'i> Token<'i> {
-    /// Displays only enough info to know which type of token the token is
-    pub fn variant_display(&self) -> &str {
-        match self {
-            Self::End => "End",
-            Self::CommentStr => "CommentStr",
-            Self::Block(_) => "Block(String)",
-            Self::Comment(_) => "Comment(ParsedComment)",
-        }
-    }
-}
-
+/// Converts TokenVec to string, but only including Block tokens
 impl<'i> ToString for TokenVec<'i> {
     fn to_string(&self) -> String {
         let mut buffer = String::new();
@@ -50,6 +30,7 @@ impl<'i> ToString for TokenVec<'i> {
     }
 }
 
+/// Helper iterator through all ParsedComment vectors
 impl<'o, 'i> IntoIterator for &'o TokenVec<'i> {
     type Item = (usize, &'o ParsedComment<'i>);
     type IntoIter = std::vec::IntoIter<Self::Item>;
@@ -93,7 +74,7 @@ impl<'i> TokenVec<'i> {
                 warn!("got token: {token:#?} at idx: {idx}");
                 if let Token::Comment(c) = token {
                     warn!("got comment: {c:#?}");
-                    if super::cmp_pos_range(&c.range, pos) == Ordering::Equal {
+                    if super::super::cmp_pos_range(&c.range, pos) == Ordering::Equal {
                         return Some((&c, *idx));
                     }
                     warn!("Position: {pos:#?} not in comment range");

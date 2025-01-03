@@ -2,7 +2,7 @@ use super::{
     super::logic::Interact,
     comment_str_map::{get_comment_string_info, CommentStrInfo},
     comments::ParsedComment,
-    tokens::{Token, TokenVec},
+    tokens::{vec::TokenVec, Token},
 };
 use lsp_types::{Position, Range};
 use std::fmt::Debug;
@@ -167,7 +167,9 @@ impl<'input> Lexer<'input> {
                         .expect("end slice should not be an empty string");
 
                     if !self.buffer.is_empty() {
-                        vec.push(Token::Block(self.buffer.drain(..).collect::<String>()));
+                        vec.push(Token::Block(
+                            self.buffer.drain(..).collect::<String>().trim().to_string(),
+                        ));
                     }
 
                     for _ in 0..start_slice.len() {
@@ -217,7 +219,9 @@ impl<'input> Lexer<'input> {
                             self.progress_char();
                             self.buffer.push(self.ch.expect("this should be some"));
                         }
-                        vec.push(Token::Block(self.buffer.drain(..).collect::<String>()))
+                        vec.push(Token::Block(
+                            self.buffer.drain(..).collect::<String>().trim().to_string(),
+                        ))
                     }
                 }
 
@@ -229,7 +233,9 @@ impl<'input> Lexer<'input> {
         }
 
         if !self.buffer.is_empty() {
-            vec.push(Token::Block(self.buffer.drain(..).collect()));
+            vec.push(Token::Block(
+                self.buffer.drain(..).collect::<String>().trim().to_string(),
+            ));
         }
 
         vec.push(Token::End);

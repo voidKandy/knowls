@@ -1,11 +1,25 @@
-use std::cmp::Ordering;
+use std::{cmp::Ordering, sync::LazyLock};
 
-use espx_lsp_server::interact::{
-    parsing::{cmp_pos_range, comments::ParsedComment, lexer::Lexer, tokens::Token},
-    Interact, InteractArg, InteractVar,
+use espx_lsp_server::{
+    interact::{
+        parsing::{
+            cmp_pos_range,
+            comments::ParsedComment,
+            language_ext_from_uri,
+            lexer::Lexer,
+            tokens::{vec::TokenVec, Token},
+        },
+        Interact, InteractArg, InteractVar,
+    },
+    util::Diff,
 };
 use lsp_types::{Position, Range};
 use tracing::warn;
+
+use crate::{
+    helpers::TEST_TRACING,
+    test_docs::{test_doc_1, test_doc_1diff, test_doc_2},
+};
 
 #[test]
 fn pos_in_range_works() {
@@ -226,4 +240,54 @@ pub struct EvenMoreCode {
         expected_content,
         first_parsed_comment.content_without_comment(ext).unwrap()
     );
+}
+
+#[test]
+fn diffing_works() {
+    LazyLock::force(&TEST_TRACING);
+    let doc1 = test_doc_1();
+    let doc1diff = test_doc_1diff();
+    let ext = language_ext_from_uri(&doc1.0);
+    let mut l = Lexer::new(&doc1.1, ext);
+    let tokens1 = l.lex_input();
+
+    let mut l = Lexer::new(&doc1diff.1, ext);
+    let tokensdiff = l.lex_input();
+
+    let expected = vec![
+        Diff::Change(
+            1,
+            Token::Comment(ParsedComment::new(
+                Some(Interact::try_from_str("@_").unwrap()),
+                "@_",
+                Range {
+                    start: Position {
+                        line: 2,
+                        character: 3,
+                    },
+                    end: Position {
+                        line: 2,
+                        character: 5,
+                    },
+                },
+            )),
+        ),
+        Diff::Change(
+            2,
+            Token::Block(
+                r#"fn main() {
+    let mut raw = String::from("string");
+    io::stdin()
+        .read_to_string(&mut raw)
+        .expect("failed to read io");
+}"#
+                .to_string(),
+            ),
+        ),
+        Diff::Change(5, Token::Block("struct BePushed;".to_string())),
+    ];
+
+    // let d = Diff::get_diff(tokens1, tokensdiff);
+
+    // assert_eq!(expected, d);
 }

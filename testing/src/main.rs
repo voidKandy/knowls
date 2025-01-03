@@ -1,6 +1,6 @@
 use std::io::{self, Read};
 
-// @_ hello
+// @_Hello
 fn main() {
     let mut raw = String::new();
     io::stdin()
