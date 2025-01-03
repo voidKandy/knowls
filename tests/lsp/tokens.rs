@@ -132,13 +132,9 @@ pub struct EvenMoreCode {
     let tokens = lexer.lex_input();
 
     let expected = vec![
-        Token::Block(String::from(
-            "\npub mod lexer;\nuse std::sync::LazyLock;\n\n",
-        )),
-        Token::Block(String::from("use lsp_types::Range;\n\n")),
-        Token::Block(String::from(
-            "use super::{InteractError, InteractResult};\n\n",
-        )),
+        Token::Block(String::from("pub mod lexer;\nuse std::sync::LazyLock;")),
+        Token::Block(String::from("use lsp_types::Range;")),
+        Token::Block(String::from("use super::{InteractError, InteractResult};")),
         Token::CommentStr,
         Token::Comment(ParsedComment::new(
             Some(Interact::new(
@@ -164,9 +160,7 @@ pub struct EvenMoreCode {
             r#"pub struct ParsedComment {
     content: String,
     range: Range,
-}
-
-"#,
+}"#,
         )),
         Token::CommentStr,
         Token::Comment(ParsedComment::new(
@@ -184,7 +178,7 @@ pub struct EvenMoreCode {
             },
         )),
         Token::CommentStr,
-        Token::Block(String::from("\npub struct MoreCode;\n\n")),
+        Token::Block(String::from("pub struct MoreCode;")),
         Token::CommentStr,
         Token::Comment(ParsedComment::new(
             Some(Interact::new(
@@ -204,7 +198,7 @@ pub struct EvenMoreCode {
             },
         )),
         Token::Block(String::from(
-            "pub struct EvenMoreCode {\n    i: u32,\n    s: &str,\n}\n        ",
+            "pub struct EvenMoreCode {\n    i: u32,\n    s: &str,\n}",
         )),
         Token::End,
     ];
@@ -243,10 +237,34 @@ pub struct EvenMoreCode {
 }
 
 #[test]
+fn lcs_works() {
+    LazyLock::force(&TEST_TRACING);
+    let doc1 = test_doc_1();
+    let doc1diff = test_doc_1diff();
+
+    let ext = language_ext_from_uri(&doc1.0);
+    let mut l = Lexer::new(&doc1.1, ext);
+    let tokens1 = l.lex_input();
+
+    let mut l = Lexer::new(&doc1diff.1, ext);
+    let tokensdiff = l.lex_input();
+
+    let lcs = Diff::get_lcs(&tokens1, &tokensdiff);
+    let expected = vec![
+        Token::Block(String::from("use std::io::{self, Read};")),
+        Token::CommentStr,
+        Token::End,
+    ];
+
+    assert_eq!(lcs, expected);
+}
+
+#[test]
 fn diffing_works() {
     LazyLock::force(&TEST_TRACING);
     let doc1 = test_doc_1();
     let doc1diff = test_doc_1diff();
+
     let ext = language_ext_from_uri(&doc1.0);
     let mut l = Lexer::new(&doc1.1, ext);
     let tokens1 = l.lex_input();
@@ -256,10 +274,10 @@ fn diffing_works() {
 
     let expected = vec![
         Diff::Change(
-            1,
+            2,
             Token::Comment(ParsedComment::new(
                 Some(Interact::try_from_str("@_").unwrap()),
-                "@_",
+                " @_",
                 Range {
                     start: Position {
                         line: 2,
@@ -267,13 +285,13 @@ fn diffing_works() {
                     },
                     end: Position {
                         line: 2,
-                        character: 5,
+                        character: 6,
                     },
                 },
             )),
         ),
         Diff::Change(
-            2,
+            3,
             Token::Block(
                 r#"fn main() {
     let mut raw = String::from("string");
@@ -284,10 +302,15 @@ fn diffing_works() {
                 .to_string(),
             ),
         ),
-        Diff::Change(5, Token::Block("struct BePushed;".to_string())),
+        Diff::Change(4, Token::Block("struct BePushed;".to_string())),
+        Diff::Delete(5),
+        Diff::Delete(6),
+        Diff::Delete(7),
+        Diff::Delete(8),
+        Diff::Delete(9),
     ];
 
-    // let d = Diff::get_diff(tokens1, tokensdiff);
+    let d = Diff::get_diffs(tokens1, tokensdiff);
 
-    // assert_eq!(expected, d);
+    assert_eq!(expected, d);
 }

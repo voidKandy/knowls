@@ -1,5 +1,3 @@
-use tracing::warn;
-
 #[derive(Debug, PartialEq, Eq)]
 pub enum Diff<T> {
     Insert(usize, T), // Position, Token to insert
@@ -22,6 +20,7 @@ where
     fn get_dp_table(old: &impl AsRef<Vec<T>>, new: &impl AsRef<Vec<T>>) -> DpTable {
         let old_vec = old.as_ref();
         let new_vec = new.as_ref();
+        tracing::warn!("old: {old_vec:#?}\nnew: {new_vec:#?}");
 
         let m = old_vec.len();
         let n = new_vec.len();
@@ -67,6 +66,9 @@ where
         for (i, one) in (**old_vec).iter().enumerate() {
             for (k, new) in (**new_vec).iter().enumerate() {
                 let matching = one == new;
+                if matching {
+                    tracing::warn!("MATCH at i:{i} k:{k}\none {one:#?}\nnew {new:#?}");
+                }
                 let cell_val = get_cell_val(&matching, i, k, &dp);
 
                 dp[i][k] = (cell_val, matching);
@@ -75,9 +77,8 @@ where
         dp
     }
 
-    fn get_lcs(old: &impl AsRef<Vec<T>>, new: &impl AsRef<Vec<T>>) -> Vec<T> {
+    pub fn get_lcs(old: &impl AsRef<Vec<T>>, new: &impl AsRef<Vec<T>>) -> Vec<T> {
         let dp = Self::get_dp_table(old, new);
-        // trace_vec_vec(&dp);
 
         let m = dp.len() - 1;
         let n = dp[0].len() - 1;
@@ -86,25 +87,49 @@ where
 
         let (mut i, mut k) = (m, n);
         loop {
-            let (val, is_match) = dp[i][k];
+            let (count, is_match) = dp[i][k];
             if expected_lcs_len.is_none() {
-                expected_lcs_len = Some(val);
+                expected_lcs_len = Some(count);
             }
+
+            if expected_lcs_len.is_some_and(|len| count != len - lcs.len()) {
+                tracing::warn!(
+                    "overshot, expecting to find {}, got {}",
+                    expected_lcs_len.unwrap() - lcs.len(),
+                    count
+                );
+                if i == m {
+                    i = 0;
+                } else {
+                    i += 1;
+                }
+                if k == n {
+                    k = 0;
+                } else {
+                    k += 1;
+                }
+                continue;
+            }
+
             if is_match {
                 let v: T = old.as_ref()[i].to_owned();
                 lcs.push(v);
                 match i.checked_sub(1) {
-                    Some(v) => i = v,
+                    Some(v) => {
+                        i = v;
+                        k -= 1;
+                    }
                     None => break,
                 };
-                k -= 1;
             } else {
                 match k.checked_sub(1) {
                     Some(v) => k = v,
                     None => {
-                        k = n;
                         match i.checked_sub(1) {
-                            Some(v) => i = v,
+                            Some(v) => {
+                                i = v;
+                                k = n;
+                            }
                             None => break,
                         };
                     }
@@ -113,11 +138,19 @@ where
         }
 
         lcs.reverse();
+
+        assert_eq!(
+            lcs.len(),
+            expected_lcs_len.unwrap(),
+            "lcs is not the expected length"
+        );
+
         lcs
     }
 
     pub fn get_diffs(old: impl AsRef<Vec<T>>, new: impl AsRef<Vec<T>>) -> Vec<Self> {
         let lcs = Self::get_lcs(&old, &new);
+        tracing::warn!("lcs: {lcs:#?}");
         let mut diffs = vec![];
         let old_vec = old.as_ref();
         let new_vec = new.as_ref();

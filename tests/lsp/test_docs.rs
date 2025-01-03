@@ -26,7 +26,7 @@ pub fn test_doc_1diff() -> (Uri, String) {
     let test_doc_1_uri = Uri::from_str("test_doc_1.rs").unwrap();
     let test_doc_1 = r#"use std::io::{self, Read};
 
-// @_ 
+// @_
 fn main() {
     let mut raw = String::from("string");
     io::stdin()
@@ -34,7 +34,6 @@ fn main() {
         .expect("failed to read io");
 }
 
-// +_
 struct BePushed;
     "#
     .to_string();

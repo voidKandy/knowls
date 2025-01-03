@@ -1,4 +1,5 @@
 pub mod vec;
+
 use super::comments::ParsedComment;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
