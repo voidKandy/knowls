@@ -15,34 +15,6 @@ pub struct InteractDocumentInfo<'i> {
 }
 
 impl<'i> ParsedComment<'i> {
-    pub fn get_diagnostics(
-        &self,
-        w: &'_ mut RwLockWriteGuard<'_, LspState<'static>>,
-        doc_info: InteractDocumentInfo<'i>,
-    ) -> Vec<Diagnostic> {
-        let mut all_diagnostics = vec![];
-
-        if let Some(interact) = self.interact.as_ref() {
-            match interact.variant {
-                InteractVar::Agent(i) => {
-                    if let Some(args) =
-                        i.get_execution_args(w, &self, doc_info, &interact.parsed_args)
-                    {
-                        all_diagnostics.append(&mut i.diagnostics(args));
-                    }
-                }
-                InteractVar::DB(i) => {
-                    if let Some(args) =
-                        i.get_execution_args(w, &self, doc_info, &interact.parsed_args)
-                    {
-                        all_diagnostics.append(&mut i.diagnostics(args));
-                    }
-                }
-            }
-        }
-        all_diagnostics
-    }
-
     pub async fn execute_from_lsp_message(
         &self,
         w: &'_ mut RwLockWriteGuard<'_, LspState<'static>>,

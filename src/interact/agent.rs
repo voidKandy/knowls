@@ -33,12 +33,12 @@ use std::collections::HashMap;
 use tokio::sync::RwLockWriteGuard;
 use tracing::warn;
 
-pub(super) struct AgentInteractExArgs<'i> {
+pub(crate) struct AgentInteractExArgs<'i> {
     user_input: AgentInteractUserInput,
     lsp_state: AgentInteractLspState<'i>,
 }
 
-pub(super) struct AgentInteractLspState<'i> {
+pub(crate) struct AgentInteractLspState<'i> {
     agent: &'i mut Agent,
     document_state: TokenVec<'i>,
     uri: &'i Uri,
@@ -297,15 +297,19 @@ impl<'i, 'g> LspMessageInteract<'i, 'g, AgentInteractExArgs<'i>> for AgentIntera
     ) -> Option<AgentInteractExArgs<'i>> {
         warn!("args: {args:?}");
 
-        let agent_char = args[0].as_char().or_else(|| {
-            tracing::error!(
-                "expected to get a char as first argument, instead got: {:#?}",
-                args[0]
-            );
-            None
-        })?;
+        let agent_char = args[0]
+            .as_string()
+            .or_else(|| {
+                tracing::error!(
+                    "expected to get a string as first argument, instead got: {:#?}",
+                    args[0]
+                );
+                None
+            })?
+            .chars()
+            .next()?;
 
-        let agent_id = AgentID::from((doc_info.uri, *agent_char));
+        let agent_id = AgentID::from((doc_info.uri, agent_char));
         let document_state = w.documents.get(&doc_info.uri).unwrap().to_owned();
 
         let agent = w
