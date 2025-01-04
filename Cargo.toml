@@ -37,7 +37,7 @@ espionox = {path = "../espionox"}
 tokio = { version = "1.28.2", features = ["full"] }
 dotenv = "0.15.0"
 crossbeam-channel = "0.5.11"
-surrealdb = {version = "2.0.2", features=['kv-rocksdb', 'protocol-http']}
+surrealdb = {version = "2.0.2", features=['kv-rocksdb', 'kv-mem', 'protocol-http']}
 toml = "0.8.12"
 thiserror = "1.0.58"
 futures = "0.3.30"

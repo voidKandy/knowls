@@ -1,5 +1,3 @@
-use crate::util::Diff;
-
 use super::{super::comments::ParsedComment, Token};
 use lsp_types::Position;
 use std::{cmp::Ordering, fmt::Debug};
@@ -87,4 +85,29 @@ impl<'i> TokenVec<'i> {
     pub fn get(&self, idx: usize) -> Option<&Token> {
         self.vec.iter().nth(idx)
     }
+
+    // pub fn update_from_diff(&mut self, diff: Vec<Diff<Token<'i>>>) {
+    //     for d in diff {
+    //         match d {
+    //             Diff::Delete(idx) => {
+    //                 self.vec.remove(idx);
+    //             }
+    //             Diff::Change(idx, tok) => {
+    //                 self.vec[idx] = tok;
+    //             }
+    //             Diff::Insert(idx, tok) => {
+    //                 let before = &self.vec[..idx];
+    //                 let after = &self.vec[idx..];
+    //                 let vec = [before, &vec![tok], after].concat();
+    //                 let comment_indices = vec.iter().enumerate().fold(vec![], |mut acc, (i, t)| {
+    //                     if let Token::Comment(_) = t {
+    //                         acc.push(i);
+    //                     }
+    //                     acc
+    //                 });
+    //                 *self = Self::new(vec, comment_indices);
+    //             }
+    //         }
+    //     }
+    // }
 }

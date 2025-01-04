@@ -6,7 +6,9 @@ use crate::{
         Database,
     },
     interact::{
-        agent::uri_agent_role,
+        agent::{push_interact_role, AgentInteract},
+        execution::InteractDocumentInfo,
+        logic::LspMessageInteract,
         parsing::{
             comments::ParsedComment,
             language_ext_from_uri,
@@ -15,8 +17,11 @@ use crate::{
         },
         InteractVar,
     },
-    other_err, MainResult,
+    other_err,
+    util::Diff,
+    MainResult,
 };
+use espionox::agents::Agent;
 use lsp_types::Uri;
 use std::{collections::HashMap, sync::Arc};
 use surrealdb::sql::{Id, Thing};
@@ -38,7 +43,11 @@ impl<'i> LspState<'i> {
     #[tracing::instrument(name = "initializing state", skip_all)]
     pub async fn new(config: Config) -> MainResult<Self> {
         let database = match config.database {
-            Some(db_config) => Some(Database::new(db_config).await?),
+            Some(db_config) => Some(
+                Database::new(db_config)
+                    .await
+                    .expect("failed to get database"),
+            ),
             None => None,
         };
 
@@ -134,62 +143,86 @@ impl<'i> LspState<'i> {
         let ext = language_ext_from_uri(&uri);
         let mut lexer = Lexer::new(&text, ext);
         let new_tokens = lexer.lex_input();
-        let old_tokens = self.documents.get(&uri);
 
-        let prev_push_interacts: Vec<(usize, &ParsedComment<'_>)> = old_tokens
-            .and_then(|tokens| {
-                Some(
-                    tokens
-                        .into_iter()
-                        .filter_map(|(i, c)| {
-                            if let Some(ref int) = c.interact {
-                                if let InteractVar::AGENT_PUSH = int.variant {
-                                    return Some((i, c));
-                                }
-                            }
+        if let Some((diff, old_tokens)) = self
+            .documents
+            .insert(uri.clone(), new_tokens.clone())
+            .and_then(|old_tokens| {
+                let diff = Diff::get_diffs(&old_tokens, &new_tokens);
+
+                let push_int_ctx = old_tokens
+                    .into_iter()
+                    .filter_map(|(i, cmt)| {
+                        if let Some(&InteractVar::Agent(AgentInteract::Push)) =
+                            cmt.interact.as_ref().and_then(|i| Some(&i.variant))
+                        {
+                            let id = cmt
+                                .interact
+                                .as_ref()
+                                .unwrap()
+                                .parsed_args
+                                .first()
+                                .and_then(|arg| {
+                                    arg.as_char()
+                                        .and_then(|ch| Some(AgentID::from((&uri, *ch))))
+                                })
+                                .unwrap();
+                            Some((i, id))
+                        } else {
                             None
-                        })
-                        .collect(),
-                )
-            })
-            .unwrap_or(vec![]);
+                        }
+                    })
+                    .collect::<Vec<(usize, AgentID)>>();
 
-        for (i, comment) in prev_push_interacts {
-            let agent_id = comment
-                .interact
-                .as_ref()
-                .expect("should be some")
-                .parsed_args
-                .first()
-                .and_then(|arg| {
-                    arg.as_char()
-                        .and_then(|ch| Some(AgentID::from((&uri, *ch))))
-                });
-
-            if agent_id.is_some() && new_tokens.get(i).is_none()
-                || new_tokens.get(i).is_some_and(|t| {
-                    warn!("token exists at matching place: {t:#?}");
-                    if let Token::Comment(c) = t {
-                        *c != *comment
-                    } else {
-                        false
+                for (i, id) in push_int_ctx {
+                    let role = push_interact_role(&uri, i);
+                    if let Some(Diff::Change(_, Token::Block(block))) = diff.get(i + 1) {
+                        warn!("block after push interact changed, updating");
+                        if let Some(ref mut a) = self.agents.get_agent_mut(id) {
+                            a.cache.mut_filter_by(&role, false);
+                            a.cache.push(espionox::prelude::Message {
+                                role: role.clone(),
+                                content: block.to_string(),
+                            });
+                        }
                     }
-                })
-            {
-                if let Some(agent) = self.agents.get_agent_mut(agent_id.as_ref().unwrap()) {
-                    let role = uri_agent_role(&uri);
-                    warn!("wiping messages with role: {role:#?} from agent: {agent_id:#?}");
-                    agent.cache.mut_filter_by(&role, false);
                 }
-            }
-        }
 
-        match self.documents.get_mut(&uri) {
-            Some(tokens) => {
-                *tokens = new_tokens;
-            }
-            None => {
-                self.documents.insert(uri, new_tokens);
+                Some((diff, old_tokens))
+            })
+        {
+            for d in diff.iter() {
+                let idx = match d {
+                    Diff::Delete(idx) => idx,
+                    Diff::Insert(idx, _) => idx,
+                    Diff::Change(idx, _) => idx,
+                };
+
+                if let Some(interact) = old_tokens.get(*idx).as_ref().and_then(|t| {
+                    if let Token::Comment(c) = t {
+                        c.interact.to_owned()
+                    } else {
+                        None
+                    }
+                }) {
+                    let doc_info = InteractDocumentInfo {
+                        tokens: &old_tokens,
+                        my_pos: *idx,
+                        uri: &uri,
+                    };
+                    match interact.variant {
+                        InteractVar::DB(_) => {}
+                        InteractVar::Agent(int) => {
+                            let agent_id = interact.parsed_args.first().and_then(|arg| {
+                                arg.as_char()
+                                    .and_then(|ch| Some(AgentID::from((&uri, *ch))))
+                            });
+                            if let Some(agent) = self.agents.get_agent_mut(agent_id.unwrap()) {
+                                AgentInteract::push_interact_diff_handle(&int, agent, d, doc_info)?;
+                            }
+                        }
+                    };
+                }
             }
         }
 

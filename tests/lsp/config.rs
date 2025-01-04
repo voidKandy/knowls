@@ -26,11 +26,8 @@ pub fn test_config(with_database: bool) -> MainResult<Config> {
             namespace="espx" 
             database="espx"
             user="root"
-            pass="root"
-            protocol="ws""#
+            pass="root""#
         }
-        // IMPORTANT!
-        // Make sure the test protocol is a protocol that supports localhost
         false => "",
     };
 
@@ -94,7 +91,7 @@ async fn config_builds_correctly() {
             database: "espx".to_owned(),
             user: "root".to_owned(),
             pass: "root".to_owned(),
-            protocol: espx_lsp_server::config::database::Protocol::Ws,
+            protocol: espx_lsp_server::config::database::Protocol::default(),
             ..Default::default()
         }),
     };

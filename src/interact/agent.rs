@@ -9,12 +9,14 @@ use super::{
         lexer::Lexer,
         tokens::{vec::TokenVec, Token},
     },
+    Interact,
 };
 use crate::{
     agents::{message_stack_into_marked_string, AgentID, Agents},
     other_err,
     server::buffer_operations::BufferOperation,
     state::LspState,
+    util::Diff,
     MainErr, MainResult,
 };
 use espionox::{
@@ -75,46 +77,57 @@ impl TryFrom<char> for AgentInteract {
     }
 }
 
-pub fn uri_agent_role(uri: &Uri) -> MessageRole {
+pub fn push_interact_role(uri: &Uri, token_idx: usize) -> MessageRole {
     MessageRole::Other {
-        alias: uri.to_string(),
+        alias: format!("{}:{token_idx}", uri.to_string()),
         coerce_to: OtherRoleTo::User,
     }
 }
 
-impl<'i> AgentInteractExArgs<'i> {
-    fn update_agent_memory_from_new_text(&mut self, new_text: &str) {
-        let mut lexer = Lexer::new(new_text, language_ext_from_uri(&self.lsp_state.uri));
-        let new_tokens = lexer.lex_input();
-
-        let prev_push_interacts: Vec<(usize, &ParsedComment<'_>)> = self
-            .lsp_state
-            .document_state
-            .into_iter()
-            .filter_map(|(i, c)| {
-                if let Some(ref int) = c.interact {
-                    if let InteractVar::AGENT_PUSH = int.variant {
-                        return Some((i, c));
+impl AgentInteract {
+    pub fn push_interact_diff_handle<'i>(
+        &self,
+        agent: &mut Agent,
+        diff: &Diff<Token<'i>>,
+        info: InteractDocumentInfo<'i>,
+    ) -> MainResult<()> {
+        match self {
+            Self::Push => match diff {
+                Diff::Insert(i, _) => {
+                    let role = push_interact_role(info.uri, *i);
+                    if let Some(Token::Block(next_block)) = info.tokens.get(i + 1) {
+                        agent.cache.push(Message {
+                            role: role.clone(),
+                            content: next_block.to_string(),
+                        });
                     }
                 }
-                None
-            })
-            .collect();
 
-        for (i, comment) in prev_push_interacts {
-            if new_tokens.get(i).is_some_and(|t| {
-                if let Token::Comment(c) = t {
-                    *c != *comment
-                } else {
-                    true
+                d @ Diff::Change(i, _) | d @ Diff::Delete(i) => {
+                    let mut should_delete = true;
+
+                    if let Diff::Change(_, t) = d {
+                        if let Token::Comment(ParsedComment {
+                            interact: Some(interact),
+                            ..
+                        }) = t
+                        {
+                            if interact.variant == InteractVar::Agent(*self) {
+                                warn!("Some trivial change must have occurred, will not delete");
+                                should_delete = false;
+                            }
+                        }
+                    }
+
+                    if should_delete {
+                        let role = push_interact_role(info.uri, *i);
+                        agent.cache.mut_filter_by(&role, false);
+                    }
                 }
-            }) {
-                self.lsp_state
-                    .agent
-                    .cache
-                    .mut_filter_by(&uri_agent_role(self.lsp_state.uri), false)
-            }
+            },
+            _ => {}
         }
+        Ok(())
     }
 }
 
@@ -256,12 +269,12 @@ impl<'i, 'g> LspMessageInteract<'i, 'g, AgentInteractExArgs<'i>> for AgentIntera
             InteractLspNotification::Save(did_save) => {
                 match self {
                     //
-                    Self::Push => {
-                        args.lsp_state.agent.cache.push(Message {
-                            role: uri_agent_role(&did_save.text_document.uri),
-                            content: args.user_input.content,
-                        });
-                    }
+                    // Self::Push => {
+                    //     args.lsp_state.agent.cache.push(Message {
+                    //         role: push_interact_role(&did_save.text_document.uri),
+                    //         content: args.user_input.content,
+                    //     });
+                    // }
                     _ => {}
                 }
             }

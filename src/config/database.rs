@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use surrealdb::{engine::any::IntoEndpoint, opt::auth::Root};
 use tracing::warn;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -8,7 +7,9 @@ pub struct DatabaseConfig {
     pub database: String,
     pub user: String,
     pub pass: String,
+    /// Value is unused with `Protocol::Mem`
     pub port: String,
+    /// Value is unused with `Protocol::Mem`
     pub host: String,
     pub protocol: Protocol,
 }
@@ -22,19 +23,20 @@ impl Default for DatabaseConfig {
             pass: "pass".to_string(),
             port: "19917".to_string(),
             host: "127.0.0.1".to_string(),
-            protocol: Protocol::Mem,
+            protocol: Protocol::default(),
         }
     }
 }
 /// https://docs.rs/surrealdb/latest/surrealdb/engine/any/fn.connect.html
 /// Surreal supports more, but I've opted to only allow these
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub enum Protocol {
     Ws,
     Wss,
     Http,
     Https,
     /// in-memory instance
+    #[default]
     Mem,
     /// file-backed instance (currently uses RocksDB)
     File,
