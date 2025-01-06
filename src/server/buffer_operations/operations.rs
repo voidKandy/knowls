@@ -144,7 +144,9 @@ impl BufferOperation {
         return Ok(sender);
     }
 
-    pub async fn do_operation(self, stream: Arc<RwLock<UnixStream>>) -> MainResult<()> {
+    pub async fn do_operation(
+        self, // , stream: Arc<RwLock<UnixStream>>
+    ) -> MainResult<Option<Message>> {
         let msg = match self {
             BufferOperation::WorkDone(work) => {
                 let method = match work {
@@ -208,7 +210,7 @@ impl BufferOperation {
                             params,
                         })
                     } else {
-                        return Ok(());
+                        return Ok(None);
                     }
                 }
 
@@ -225,22 +227,22 @@ impl BufferOperation {
                             params,
                         })
                     } else {
-                        return Ok(());
+                        return Ok(None);
                     }
                 }
             },
         };
 
-        let json: serde_json::Value = serde_json::to_value(msg).unwrap();
-        let mut w = stream.write().await;
-        if let Some(str) = serde_json::to_string(&json).ok() {
-            let str = &format!("{str}\n");
-            let bytes: &[u8] = str.as_bytes();
-
-            w.write_all(bytes).await.unwrap();
-            w.flush().await.unwrap();
-        }
-        Ok(())
+        // let json: serde_json::Value = serde_json::to_value(msg).unwrap();
+        // let mut w = stream.write().await;
+        // if let Some(str) = serde_json::to_string(&json).ok() {
+        //     let str = &format!("{str}\n");
+        //     let bytes: &[u8] = str.as_bytes();
+        //
+        //     w.write_all(bytes).await.unwrap();
+        //     w.flush().await.unwrap();
+        // }
+        Ok(Some(msg))
 
         // return Ok(sender);
     }

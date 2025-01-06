@@ -1,11 +1,8 @@
-use espx_lsp_server::{
-    sockets::{start_lsp_relay, RELAY_TRACING},
-    MainResult,
-};
+use espx_lsp_server::sockets::RELAY_TRACING;
 use std::sync::LazyLock;
 
 #[tokio::main]
-async fn main() -> MainResult<()> {
+async fn main() {
     LazyLock::force(&RELAY_TRACING);
-    start_lsp_relay().await
+    // start_lsp_relay().await
 }

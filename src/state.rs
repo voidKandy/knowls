@@ -18,6 +18,7 @@ use crate::{
         InteractVar,
     },
     other_err,
+    server::{self, buffer_operations::BufferOpChannelStatus},
     util::Diff,
     MainResult,
 };
@@ -41,10 +42,10 @@ pub struct LspState<'i> {
 
 impl<'i> LspState<'i> {
     #[tracing::instrument(name = "initializing state", skip_all)]
-    pub async fn new(config: Config) -> MainResult<Self> {
-        let database = match config.database {
+    pub async fn new(config: &Config) -> MainResult<Self> {
+        let database = match &config.database {
             Some(db_config) => Some(
-                Database::new(db_config)
+                Database::new(db_config.clone())
                     .await
                     .expect("failed to get database"),
             ),
@@ -53,7 +54,7 @@ impl<'i> LspState<'i> {
 
         warn!("got database");
 
-        let mut agents = Agents::from(config.model);
+        let mut agents = Agents::from(config.model.clone());
         warn!("got agents");
         if let Some(ref agents_config) = &config.agents {
             for (agent_id, agent_settings) in agents_config.clone().into_iter() {
@@ -81,6 +82,10 @@ impl<'i> LspState<'i> {
 
         warn!("initialized state: {state:#?}");
         Ok(state)
+    }
+
+    pub fn as_shared(self) -> SharedState<'i> {
+        SharedState(Arc::new(RwLock::new(self)))
     }
 
     pub async fn save_agent_memories_to_database(&self) -> MainResult<()> {
@@ -137,6 +142,7 @@ impl<'i> LspState<'i> {
         Ok(())
     }
 
+    #[tracing::instrument(name = "update agents and doc", skip(self))]
     pub fn update_doc_and_agents_from_text(&mut self, uri: Uri, text: &str) -> MainResult<()> {
         self.agents.update_or_create_doc_agent(&uri, &text);
 
@@ -236,26 +242,36 @@ impl<'i> Clone for SharedState<'i> {
     }
 }
 
-impl<'i> SharedState<'i> {
-    #[tracing::instrument(name = "initializing shared state", skip_all)]
-    pub async fn init(config: Config) -> MainResult<Self> {
-        Ok(Self::new(LspState::new(config).await?))
+// impl<'i> SharedState<'i> {
+pub async fn handle_lsp_message(
+    state: SharedState<'static>,
+    message: lsp_server::Message,
+) -> MainResult<Option<lsp_server::Message>> {
+    match match message {
+        lsp_server::Message::Notification(not) => {
+            server::notifications::handle_notification(not, state.clone()).await
+        }
+        lsp_server::Message::Request(req) => {
+            if req.method.as_str() == "shutdown" {
+                warn!("shutting down server");
+                return Ok(None);
+            }
+            server::requests::handle_request(req, state.clone()).await
+        }
+        _ => Err(std::io::Error::other("No handler for responses").into()),
+    } {
+        Ok(mut buffer_op_channel_handler) => {
+            while let Some(status) = buffer_op_channel_handler.receiver.recv().await {
+                match status.unwrap() {
+                    BufferOpChannelStatus::Finished => break,
+                    BufferOpChannelStatus::Working(buffer_op) => {
+                        return Ok(buffer_op.do_operation().await.unwrap())
+                    }
+                }
+            }
+        }
+        Err(err) => return Err(other_err!("error in handler: {}", err)),
     }
-
-    pub fn new(state: LspState<'i>) -> Self {
-        Self(Arc::new(RwLock::new(state)))
-    }
-    // pub fn get_read(&self) -> MainResult<RwLockReadGuard<'_, LspState>> {
-    //     match self.0.try_read() {
-    //         Ok(g) => Ok(g),
-    //         Err(e) => Err(e.into()),
-    //     }
-    // }
-    //
-    // pub fn get_write(&mut self) -> MainResult<RwLockWriteGuard<'_, LspState>> {
-    //     match self.0.try_write() {
-    //         Ok(g) => Ok(g),
-    //         Err(e) => Err(e.into()),
-    //     }
-    // }
+    Ok(None)
 }
+// }

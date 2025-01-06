@@ -20,7 +20,7 @@ where
     fn get_dp_table(old: &impl AsRef<Vec<T>>, new: &impl AsRef<Vec<T>>) -> DpTable {
         let old_vec = old.as_ref();
         let new_vec = new.as_ref();
-        tracing::warn!("old: {old_vec:#?}\nnew: {new_vec:#?}");
+        // tracing::warn!("old: {old_vec:#?}\nnew: {new_vec:#?}");
 
         let m = old_vec.len();
         let n = new_vec.len();
@@ -67,7 +67,7 @@ where
             for (k, new) in (**new_vec).iter().enumerate() {
                 let matching = one == new;
                 if matching {
-                    tracing::warn!("MATCH at i:{i} k:{k}\none {one:#?}\nnew {new:#?}");
+                    // tracing::warn!("MATCH at i:{i} k:{k}\none {one:#?}\nnew {new:#?}");
                 }
                 let cell_val = get_cell_val(&matching, i, k, &dp);
 
@@ -93,11 +93,11 @@ where
             }
 
             if expected_lcs_len.is_some_and(|len| count != len - lcs.len()) {
-                tracing::warn!(
-                    "overshot, expecting to find {}, got {}",
-                    expected_lcs_len.unwrap() - lcs.len(),
-                    count
-                );
+                // tracing::warn!(
+                //     "overshot, expecting to find {}, got {}",
+                //     expected_lcs_len.unwrap() - lcs.len(),
+                //     count
+                // );
                 if i == m {
                     i = 0;
                 } else {
@@ -150,7 +150,7 @@ where
 
     pub fn get_diffs(old: impl AsRef<Vec<T>>, new: impl AsRef<Vec<T>>) -> Vec<Self> {
         let lcs = Self::get_lcs(&old, &new);
-        tracing::warn!("lcs: {lcs:#?}");
+        // tracing::warn!("lcs: {lcs:#?}");
         let mut diffs = vec![];
         let old_vec = old.as_ref();
         let new_vec = new.as_ref();

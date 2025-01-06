@@ -171,6 +171,14 @@ impl<'i, 'g> LspMessageInteract<'i, 'g, AgentInteractExArgs<'i>> for AgentIntera
                         sender.send_operation(message.into()).await?;
                     }
                     Self::Prompt => {
+                        if args.user_input.content.trim().is_empty() {
+                            sender
+                                .send_work_done_report(Some("No messages to send"), None)
+                                .await?;
+
+                            return Ok(());
+                        }
+
                         let mut changes = HashMap::new();
                         let mut change_range = args.user_input.range;
                         change_range.start.character += 2;
@@ -288,6 +296,7 @@ impl<'i, 'g> LspMessageInteract<'i, 'g, AgentInteractExArgs<'i>> for AgentIntera
     }
 
     #[tracing::instrument("get ex args", skip(w))]
+    // THis function should return a result
     fn get_execution_args(
         &self,
         w: &'i mut RwLockWriteGuard<'g, LspState<'static>>,
@@ -297,17 +306,16 @@ impl<'i, 'g> LspMessageInteract<'i, 'g, AgentInteractExArgs<'i>> for AgentIntera
     ) -> Option<AgentInteractExArgs<'i>> {
         warn!("args: {args:?}");
 
-        let agent_char = args[0]
-            .as_string()
-            .or_else(|| {
-                tracing::error!(
-                    "expected to get a string as first argument, instead got: {:#?}",
-                    args[0]
-                );
-                None
-            })?
-            .chars()
-            .next()?;
+        let mut first_arg_is_string = false;
+        let agent_char = match &args[0] {
+            InteractArg::Char(c) => *c,
+            InteractArg::String(s) => {
+                first_arg_is_string = true;
+                s.chars()
+                    .next()
+                    .expect("empty string as first interact arg")
+            }
+        };
 
         let agent_id = AgentID::from((doc_info.uri, agent_char));
         let document_state = w.documents.get(&doc_info.uri).unwrap().to_owned();
@@ -317,19 +325,21 @@ impl<'i, 'g> LspMessageInteract<'i, 'g, AgentInteractExArgs<'i>> for AgentIntera
             .get_agent_mut(&agent_id)
             .expect("No agent matching given id");
         let content = match self {
-            Self::Prompt | Self::RagPrompt => {
-                args.into_iter().skip(1).fold(String::new(), |str, arg| {
-                    if let Some(arg_str) = arg
-                        .as_string()
-                        .and_then(|str| Some(str.to_string()))
-                        .or(arg.as_char().and_then(|ch| Some(ch.to_string())))
-                    {
-                        format!("{str} {arg_str}",)
+            Self::Prompt | Self::RagPrompt => args.into_iter().fold(String::new(), |str, arg| {
+                if let Some(arg_str) = arg
+                    .as_string()
+                    .and_then(|str| Some(str.to_string()))
+                    .or(arg.as_char().and_then(|ch| Some(ch.to_string())))
+                {
+                    if first_arg_is_string {
+                        format!("{str} {}", &arg_str[1..])
                     } else {
-                        str
+                        format!("{str} {arg_str}",)
                     }
-                })
-            }
+                } else {
+                    str
+                }
+            }),
 
             Self::Push => {
                 if let Some(tok) = doc_info.tokens.get(doc_info.my_pos + 1) {
@@ -355,8 +365,9 @@ impl<'i, 'g> LspMessageInteract<'i, 'g, AgentInteractExArgs<'i>> for AgentIntera
 
         // this might be BAD
         if content.is_empty() {
-            warn!("passing empty content to agent interact args");
+            warn!("passing empty user input to agent interact args");
         }
+
         let ex_args = AgentInteractExArgs {
             lsp_state: AgentInteractLspState {
                 agent,
@@ -368,6 +379,8 @@ impl<'i, 'g> LspMessageInteract<'i, 'g, AgentInteractExArgs<'i>> for AgentIntera
                 range: interact_comment.range,
             },
         };
+
+        warn!("got execution args");
 
         Some(ex_args)
     }

@@ -3,7 +3,9 @@ use super::{
     parsing::{comments::ParsedComment, tokens::vec::TokenVec},
     InteractLspMessage, InteractVar,
 };
-use crate::{server::buffer_operations::BufferOpChannelSender, state::LspState, MainResult};
+use crate::{
+    other_err, server::buffer_operations::BufferOpChannelSender, state::LspState, MainResult,
+};
 use lsp_types::{Diagnostic, Uri};
 use tokio::sync::RwLockWriteGuard;
 
@@ -25,16 +27,19 @@ impl<'i> ParsedComment<'i> {
         if let Some(interact) = &self.interact {
             let message = Into::<InteractLspMessage>::into(message);
 
-            let report = format!(
-                "Triggered LSP {} with {:#?}",
-                match message {
-                    InteractLspMessage::Req { .. } => "request",
-                    InteractLspMessage::Noti { .. } => "notification",
-                },
-                interact.variant
-            );
+            // let report = format!(
+            //     "Triggered LSP {} with {:?}",
+            //     match message {
+            //         InteractLspMessage::Req { .. } => "request",
+            //         InteractLspMessage::Noti { .. } => "notification",
+            //     },
+            //     interact.variant
+            // );
 
-            sender.send_work_done_end(Some(&report)).await?;
+            // sender
+            //     .send_work_done_end(Some(&report))
+            //     .await
+            //     .expect("failed to send work done");
 
             match interact.variant {
                 InteractVar::DB(db_int) => {
@@ -43,12 +48,20 @@ impl<'i> ParsedComment<'i> {
                     {
                         match message {
                             InteractLspMessage::Req { body, id } => {
-                                db_int.execute_request(args, id, body, sender).await?;
+                                db_int
+                                    .execute_request(args, id, body, sender)
+                                    .await
+                                    .expect("failed to execute db interact from request");
                             }
                             InteractLspMessage::Noti(noti) => {
-                                db_int.execute_notification(args, noti, sender).await?;
+                                db_int
+                                    .execute_notification(args, noti, sender)
+                                    .await
+                                    .expect("failed to execute db interact from notification");
                             }
                         }
+                    } else {
+                        return Err(other_err!("failed to get Execution args"));
                     }
                 }
 
@@ -60,14 +73,18 @@ impl<'i> ParsedComment<'i> {
                             InteractLspMessage::Req { body, id } => {
                                 agent_interact
                                     .execute_request(args, id, body, sender)
-                                    .await?;
+                                    .await
+                                    .expect("failed to execute agent interact from request");
                             }
                             InteractLspMessage::Noti(noti) => {
                                 agent_interact
                                     .execute_notification(args, noti, sender)
-                                    .await?;
+                                    .await
+                                    .expect("failed to execute agent interact from notification");
                             }
                         }
+                    } else {
+                        return Err(other_err!("failed to get Execution args"));
                     }
                 }
             }

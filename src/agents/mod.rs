@@ -35,7 +35,6 @@ impl AgentID {
 
 impl From<&AgentID> for AgentID {
     fn from(value: &AgentID) -> Self {
-        warn!("Cloning agent ID");
         value.to_owned()
     }
 }

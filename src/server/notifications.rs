@@ -57,16 +57,19 @@ async fn handle_didChange(
     state: SharedState<'static>,
     sender: BufferOpChannelSender,
 ) -> MainResult<()> {
-    let text_document_changes: DidChangeTextDocumentParams = serde_json::from_value(noti.params)?;
+    let text_document_changes: DidChangeTextDocumentParams =
+        serde_json::from_value(noti.params).expect("could not parse changes from notification");
     let uri = text_document_changes.text_document.uri;
     if text_document_changes.content_changes.len() > 1 {
         warn!("more than a single change recieved in notification");
     }
     let text = &text_document_changes.content_changes.first().unwrap().text;
 
-    let mut w = state.0.try_write()?;
+    // warn!("change text: {text}");
+    // let mut w = state.0.try_write()?;
 
-    w.update_doc_and_agents_from_text(uri.clone(), &text)?;
+    // w.update_doc_and_agents_from_text(uri.clone(), &text)
+    //     .expect("failed to update doc and agent");
 
     Ok(())
 }
@@ -79,40 +82,43 @@ pub async fn handle_didSave<'s>(
     mut sender: BufferOpChannelSender,
 ) -> MainResult<()> {
     let params: DidSaveTextDocumentParams =
-        serde_json::from_value::<DidSaveTextDocumentParams>(noti.params)?;
+        serde_json::from_value::<DidSaveTextDocumentParams>(noti.params)
+            .expect("could not get didSave params");
     let text = params
         .text
         .as_ref()
-        .ok_or(other_err!("No text on didSave noti"))?
+        .ok_or(other_err!("No text in didSave noti"))?
         .to_owned();
     let uri = params.text_document.uri.clone();
 
     let mut w = state.0.try_write()?;
-    w.update_doc_and_agents_from_text(uri.clone(), &text)?;
+    w.update_doc_and_agents_from_text(uri.clone(), &text)
+        .expect("could not update doc and agents");
 
     let notification = Into::<InteractLspNotification>::into(params);
 
-    if let Some(tokens) = w.documents.get(&uri).cloned() {
-        for (pos, parsed_comment) in tokens.into_iter() {
-            let doc_info = InteractDocumentInfo {
-                tokens: &tokens,
-                my_pos: pos,
-                uri: &uri,
-            };
-            parsed_comment
-                .execute_from_lsp_message(&mut w, &mut sender, notification.clone(), doc_info)
-                .await?;
-        }
+    // must be cloned so a &mut of w can be held
+    let tokens = w.documents.get(&uri).cloned().unwrap();
+    for (pos, parsed_comment) in tokens.into_iter() {
+        let doc_info = InteractDocumentInfo {
+            tokens: &tokens,
+            my_pos: pos,
+            uri: &uri,
+        };
+        parsed_comment
+            .execute_from_lsp_message(&mut w, &mut sender, notification.clone(), doc_info)
+            .await
+            .expect("failed to execute parsed comment");
     }
 
     if w.database.is_some() {
-        w.save_docs_to_database().await?;
-        w.save_agent_memories_to_database().await?;
+        w.save_docs_to_database()
+            .await
+            .expect("failed to save docs to database");
+        w.save_agent_memories_to_database()
+            .await
+            .expect("failed to save agent memories");
     }
-
-    sender
-        .send_work_done_end(Some("Updated Document Tokens"))
-        .await?;
 
     sender
         .send_operation(LspDiagnostic::diagnose_document(uri, &mut w)?.into())

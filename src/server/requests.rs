@@ -5,7 +5,7 @@ use super::{
 use crate::{
     interact::{execution::InteractDocumentInfo, InteractLspRequest},
     other_err,
-    server::BufferOpChannelJoinHandle,
+    server::{diagnostics::LspDiagnostic, BufferOpChannelJoinHandle},
     state::SharedState,
     MainResult,
 };
@@ -28,7 +28,7 @@ pub async fn handle_request(
             }
             "textDocument/hover" => handle_hover(req, state, task_sender.clone()).await,
             "textDocument/diagnostic" => handle_diagnostics(req, state, task_sender.clone()).await,
-            "shutdown" => handle_shutdown(state, task_sender.clone()).await,
+            // "shutdown" => handle_shutdown(state, task_sender.clone()).await,
             _ => {
                 warn!("unhandled request method: {}", req.method);
                 Ok(())
@@ -92,7 +92,8 @@ pub async fn handle_goto_definition(
     };
     comment
         .execute_from_lsp_message(&mut w, &mut sender, (request, req.id), doc_info)
-        .await?;
+        .await
+        .expect("failed to execute parsed comment");
 
     if w.database.is_some() {
         w.save_agent_memories_to_database().await?;
@@ -114,7 +115,7 @@ pub async fn handle_hover(
         .clone();
     let position = params.text_document_position_params.position;
 
-    let mut w = state.0.try_write()?;
+    let mut w = state.0.try_write().expect("failed to get write guard");
 
     let doc_tokens = w
         .documents
@@ -138,7 +139,8 @@ pub async fn handle_hover(
     };
     comment
         .execute_from_lsp_message(&mut w, &mut sender, (request, req.id), doc_info)
-        .await?;
+        .await
+        .expect("failed to execute parsed comment");
 
     Ok(())
 }
@@ -161,9 +163,10 @@ async fn handle_diagnostics(
 
 async fn handle_shutdown(
     state: SharedState<'static>,
-    sender: BufferOpChannelSender,
+    mut sender: BufferOpChannelSender,
 ) -> MainResult<()> {
     warn!("shutting down server");
+
     // sender.start_work_done(Some("Shutting down server")).await?;
     // let mut w = state.0.try_write()?;
     // if let Some(_db) = w.database.take() {
