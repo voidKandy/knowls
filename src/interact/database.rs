@@ -1,10 +1,10 @@
 use super::{
     execution::InteractDocumentInfo,
-    logic::{InteractArg, LspMessageInteract},
+    logic::{InteractArg, LspMessageInteract, ServerStateWriteGuard},
     parsing::comments::ParsedComment,
     InteractLspRequest,
 };
-use crate::{server::buffer_operations::BufferOperation, state::LspState, MainErr, MainResult};
+use crate::{rpc::lsp::buffer_operations::BufferOperation, MainErr, MainResult};
 use lsp_server::RequestId;
 use lsp_types::{
     Diagnostic, DiagnosticSeverity, HoverContents, MessageType, Range, ShowMessageParams,
@@ -131,14 +131,14 @@ port: {}
     #[tracing::instrument("get ex args", skip(w))]
     fn get_execution_args(
         &self,
-        w: &'i mut RwLockWriteGuard<'g, LspState<'static>>,
+        w: &'i mut ServerStateWriteGuard<'g>,
         interact_comment: &'i ParsedComment<'_>,
         doc_info: InteractDocumentInfo<'i>,
         args: &Vec<InteractArg>,
     ) -> Option<DBInteractExArgs<'i, 'g>> {
         warn!("args: {args:?}");
 
-        let state_guard = if w.database.as_ref().is_some() {
+        let state_guard = if w.db.as_ref().is_some() {
             Some(w)
         } else {
             None

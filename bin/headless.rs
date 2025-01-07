@@ -1,15 +1,12 @@
 use crossbeam_channel::{RecvError, TryRecvError};
 use espx_lsp_server::{
     self,
+    client::Client,
     config::Config,
-    scratch::{Client, Server, TcpPacket, RES_SIZE},
-    sockets::{
-        rpc::{ServerRPCWrapper, ServerRelayRequest, ServerRelayResponse},
-        trace::CLI_TRACING,
-        SocketGuard,
-    },
-    state::SharedState,
-    MainResult,
+    rpc::{messages::ServerRelayResponse, TcpPacket},
+    server::Server,
+    trace::CLI_TRACING,
+    trace_panics, MainResult,
 };
 use lsp_types::{
     CodeActionProviderCapability, DiagnosticServerCapabilities, InitializeParams,
@@ -139,18 +136,8 @@ impl HeadlessClient {
 #[tokio::main]
 async fn main() {
     LazyLock::force(&CLI_TRACING);
-    std::panic::set_hook(Box::new(|v| {
-        let payload = v.payload();
-        let str = payload.downcast_ref::<String>().cloned().unwrap_or(
-            payload
-                .downcast_ref::<&'static str>()
-                .map(|str| str.to_string())
-                .unwrap_or("Any".to_string()),
-        );
-
-        tracing::error!("thread panicked at: {:#?}\npayload: {str:#?}", v.location(),)
-    }));
     tracing::warn!("spinning up headless Language Server");
+    trace_panics!();
 
     let config = Config::init_from_global_config().expect("failed to build config");
     tracing::warn!("initializing with config: {config:#?}");

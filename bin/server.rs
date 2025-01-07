@@ -1,4 +1,4 @@
-use espx_lsp_server::{self, config::Config, scratch::Server, sockets::trace::APP_TRACING};
+use espx_lsp_server::{self, config::Config, server::Server, trace::APP_TRACING};
 use std::sync::LazyLock;
 
 #[tokio::main]

@@ -2,11 +2,7 @@
 use clap::Parser;
 use espx_lsp_server::{
     config::Config,
-    sockets::{
-        init_serverside_listener_and_stream, trace::CLI_TRACING, trace::CLI_TRACING_LOG_FILE,
-        CLIENTSIDE_RELAY_ADDR, SERVERSIDE_RELAY_ADDR,
-    },
-    state::SharedState,
+    trace::{CLI_TRACING, CLI_TRACING_LOG_FILE},
 };
 use std::sync::{Arc, LazyLock};
 use tokio::sync::RwLock;

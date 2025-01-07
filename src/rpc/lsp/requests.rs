@@ -1,11 +1,10 @@
 use super::{
     buffer_operations::{BufferOpChannelHandler, BufferOpChannelSender},
-    show_request_err,
+    show_request_err, BufferOpChannelJoinHandle,
 };
 use crate::{
     interact::{execution::InteractDocumentInfo, InteractLspRequest},
     other_err,
-    server::{diagnostics::LspDiagnostic, BufferOpChannelJoinHandle},
     state::SharedState,
     MainResult,
 };

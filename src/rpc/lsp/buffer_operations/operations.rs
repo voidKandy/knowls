@@ -1,6 +1,5 @@
-use std::sync::Arc;
-
-use crate::{server::diagnostics::LspDiagnostic, MainResult};
+use super::super::diagnostics::LspDiagnostic;
+use crate::MainResult;
 use crossbeam_channel::Sender;
 use lsp_server::{Message, Notification, RequestId, Response};
 use lsp_types::{
@@ -8,7 +7,6 @@ use lsp_types::{
     ProgressParamsValue, ProgressToken, PublishDiagnosticsParams, ShowMessageParams,
     WorkDoneProgress,
 };
-use tokio::{io::AsyncWriteExt, net::UnixStream, sync::RwLock};
 use tracing::{debug, error};
 
 #[derive(Debug, Clone)]

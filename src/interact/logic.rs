@@ -5,7 +5,7 @@ use super::{
     parsing::{comments::ParsedComment, tokens::Token},
 };
 use crate::{
-    server::buffer_operations::BufferOpChannelSender, state::LspState, util::Diff, MainResult,
+    rpc::lsp::buffer_operations::BufferOpChannelSender, server::ServerState, util::Diff, MainResult,
 };
 use lsp_server::RequestId;
 use lsp_types::{
@@ -35,12 +35,13 @@ impl InteractVar {
     pub const DATABASE_STATE: Self = Self::DB(DBInteract);
 }
 
+pub type ServerStateWriteGuard<'g> = RwLockWriteGuard<'g, ServerState<'static>>;
 pub trait LspMessageInteract<'i, 'g, ARGS>: std::fmt::Debug + Copy {
     fn diagnostics(&self, args: ARGS) -> Vec<Diagnostic>;
 
     fn get_execution_args(
         &self,
-        w: &'i mut RwLockWriteGuard<'g, LspState<'static>>,
+        w: &'i mut ServerStateWriteGuard<'g>,
         interact_comment: &'i ParsedComment<'_>,
         doc_info: InteractDocumentInfo<'i>,
         args: &Vec<InteractArg>,

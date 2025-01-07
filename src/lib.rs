@@ -1,17 +1,16 @@
 pub mod agents;
+pub mod client;
 pub mod config;
 pub mod database;
 pub mod error;
-pub mod interact;
-pub mod scratch;
+// pub mod interact;
+pub mod knowledge;
+pub mod rpc;
 pub mod server;
-pub mod sockets;
-pub mod state;
-pub mod telemetry;
+// pub mod state;
+pub mod trace;
 pub mod ui;
 pub mod util;
-
-pub type MainErr = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 macro_rules! other_err {
     ($($arg:tt)*) => ({
@@ -19,8 +18,25 @@ macro_rules! other_err {
     });
 }
 pub(crate) use other_err;
-
+pub type MainErr = Box<dyn std::error::Error + Send + Sync + 'static>;
 pub type MainResult<T> = std::result::Result<T, MainErr>;
+#[allow(unused_macros)]
+#[macro_export]
+macro_rules! trace_panics {
+    () => {
+        std::panic::set_hook(Box::new(|v| {
+            let payload = v.payload();
+            let str = payload.downcast_ref::<String>().cloned().unwrap_or(
+                payload
+                    .downcast_ref::<&'static str>()
+                    .map(|str| str.to_string())
+                    .unwrap_or("Any".to_string()),
+            );
+
+            tracing::error!("thread panicked at: {:#?}\npayload: {str:#?}", v.location(),)
+        }));
+    };
+}
 
 pub mod embeddings {
 
@@ -53,6 +69,4 @@ pub mod embeddings {
         tracing::warn!("Embedding dimension: {}", embeddings[0].len()); // -> Embedding dimension: 384
         Ok(embeddings)
     }
-
-    mod tests {}
 }
