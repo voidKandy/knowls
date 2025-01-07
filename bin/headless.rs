@@ -3,7 +3,7 @@ use espx_lsp_server::{
     self,
     client::Client,
     config::Config,
-    rpc::{messages::ServerRelayResponse, TcpPacket},
+    rpc::{messages::ServerRelayResponse, ServerRelayRequest, TcpPacket},
     server::Server,
     trace::CLI_TRACING,
     trace_panics, MainResult,

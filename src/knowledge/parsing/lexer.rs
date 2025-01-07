@@ -1,5 +1,5 @@
 use super::{
-    super::logic::Interact,
+    // super::logic::Interact,
     comment_str_map::{get_comment_string_info, CommentStrInfo},
     comments::ParsedComment,
     tokens::{vec::TokenVec, Token},
@@ -200,11 +200,12 @@ impl<'input> Lexer<'input> {
 
                     let content = self.buffer.drain(..).collect::<String>();
 
-                    let interact = Interact::try_from_str(&content);
+                    // let interact = Interact::try_from_str(&content);
 
                     comment_indices.push(vec.len());
                     vec.push(Token::Comment(ParsedComment::new(
-                        interact, &content, range,
+                        // interact,
+                        &content, range,
                     )));
 
                     if multiline_start {

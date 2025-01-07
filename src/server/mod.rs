@@ -8,7 +8,7 @@ use crate::{
 use std::{collections::HashMap, sync::Arc};
 use tokio::{
     net::{TcpListener, ToSocketAddrs},
-    sync::RwLock,
+    sync::{RwLock, RwLockWriteGuard},
     task::JoinHandle,
 };
 
@@ -19,6 +19,8 @@ pub struct Server<'s> {
     connections: HashMap<String, JoinHandle<()>>,
 }
 
+pub type ServerStateWriteGuard<'g> = RwLockWriteGuard<'g, ServerState<'static>>;
+pub type SharedState<'s> = Arc<RwLock<ServerState<'s>>>;
 #[derive(Debug)]
 pub struct ServerState<'s> {
     pub(crate) config: Config,

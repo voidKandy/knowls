@@ -3,12 +3,7 @@ use super::{
     diagnostics::LspDiagnostic,
     show_notification_err, BufferOpChannelJoinHandle,
 };
-use crate::{
-    interact::{execution::InteractDocumentInfo, InteractLspNotification},
-    other_err,
-    state::SharedState,
-    MainResult,
-};
+use crate::{other_err, server::SharedState, MainResult};
 use lsp_server::Notification;
 use lsp_types::{
     DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
@@ -91,38 +86,38 @@ pub async fn handle_didSave<'s>(
         .to_owned();
     let uri = params.text_document.uri.clone();
 
-    let mut w = state.0.try_write()?;
-    w.update_doc_and_agents_from_text(uri.clone(), &text)
-        .expect("could not update doc and agents");
+    // let mut w = state.0.try_write()?;
+    // w.update_doc_and_agents_from_text(uri.clone(), &text)
+    //     .expect("could not update doc and agents");
 
-    let notification = Into::<InteractLspNotification>::into(params);
+    // let notification = Into::<InteractLspNotification>::into(params);
 
     // must be cloned so a &mut of w can be held
-    let tokens = w.documents.get(&uri).cloned().unwrap();
-    for (pos, parsed_comment) in tokens.into_iter() {
-        let doc_info = InteractDocumentInfo {
-            tokens: &tokens,
-            my_pos: pos,
-            uri: &uri,
-        };
-        parsed_comment
-            .execute_from_lsp_message(&mut w, &mut sender, notification.clone(), doc_info)
-            .await
-            .expect("failed to execute parsed comment");
-    }
+    // let tokens = w.documents.get(&uri).cloned().unwrap();
+    // for (pos, parsed_comment) in tokens.into_iter() {
+    //     let doc_info = InteractDocumentInfo {
+    //         tokens: &tokens,
+    //         my_pos: pos,
+    //         uri: &uri,
+    //     };
+    //     parsed_comment
+    //         .execute_from_lsp_message(&mut w, &mut sender, notification.clone(), doc_info)
+    //         .await
+    //         .expect("failed to execute parsed comment");
+    // }
 
-    if w.database.is_some() {
-        w.save_docs_to_database()
-            .await
-            .expect("failed to save docs to database");
-        w.save_agent_memories_to_database()
-            .await
-            .expect("failed to save agent memories");
-    }
+    // if w.database.is_some() {
+    //     w.save_docs_to_database()
+    //         .await
+    //         .expect("failed to save docs to database");
+    //     w.save_agent_memories_to_database()
+    //         .await
+    //         .expect("failed to save agent memories");
+    // }
 
-    sender
-        .send_operation(LspDiagnostic::diagnose_document(uri, &mut w)?.into())
-        .await?;
+    // sender
+    //     .send_operation(LspDiagnostic::diagnose_document(uri, &mut w)?.into())
+    //     .await?;
     Ok(())
 }
 
@@ -137,16 +132,16 @@ async fn handle_didOpen(
     let text = text_doc_item.text_document.text;
     let uri = text_doc_item.text_document.uri;
 
-    let mut w = state.0.try_write()?;
+    // let mut w = state.0.try_write()?;
 
-    if let Some(tokens) = w.documents.get(&uri) {}
-    w.update_doc_and_agents_from_text(uri.clone(), &text)?;
+    // if let Some(tokens) = w.documents.get(&uri) {}
+    // w.update_doc_and_agents_from_text(uri.clone(), &text)?;
     // let mut w = state.0.try_write()?;
     // this causes a crash?
     // w.update_doc_and_agents_from_text(uri.clone(), text)?;
 
-    sender
-        .send_operation(LspDiagnostic::diagnose_document(uri, &mut w)?.into())
-        .await?;
+    // sender
+    //     .send_operation(LspDiagnostic::diagnose_document(uri, &mut w)?.into())
+    //     .await?;
     Ok(())
 }

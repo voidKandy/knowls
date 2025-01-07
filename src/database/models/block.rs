@@ -1,7 +1,9 @@
-use crate::interact::parsing::tokens::{vec::TokenVec, Token};
+// use crate::interact::parsing::tokens::{vec::TokenVec, Token};
 use lsp_types::Uri;
 use serde::{Deserialize, Serialize};
 use surrealdb::sql::{Id, Thing};
+
+use crate::knowledge::parsing::tokens::{vec::TokenVec, Token};
 
 use super::{DBItem, EmbeddedDBItem};
 
@@ -84,7 +86,7 @@ impl DBBlock {
 }
 
 mod tests {
-    use crate::{database::models::DBItem, interact::parsing::lexer::Lexer};
+    use crate::{database::models::DBItem, knowledge::parsing::lexer::Lexer};
     use lsp_types::Uri;
     use std::str::FromStr;
     use surrealdb::sql::Thing;

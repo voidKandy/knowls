@@ -1,10 +1,7 @@
 use crate::{
     agents::Agents,
     knowledge::Knowledge,
-    sockets::{
-        rpc::{ServerRPCWrapper, ServerRelayResponse},
-        TcpPacket,
-    },
+    rpc::{ServerRPCWrapper, ServerRelayResponse, TcpPacket},
     MainResult,
 };
 use seraphic::{RpcRequestWrapper, RpcResponse};

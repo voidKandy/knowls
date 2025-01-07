@@ -2,12 +2,7 @@ use super::{
     buffer_operations::{BufferOpChannelHandler, BufferOpChannelSender},
     show_request_err, BufferOpChannelJoinHandle,
 };
-use crate::{
-    interact::{execution::InteractDocumentInfo, InteractLspRequest},
-    other_err,
-    state::SharedState,
-    MainResult,
-};
+use crate::{other_err, server::SharedState, MainResult};
 use lsp_server::Request;
 use lsp_types::{DocumentDiagnosticParams, GotoDefinitionParams, HoverParams};
 use tracing::{debug, warn};
@@ -66,37 +61,37 @@ pub async fn handle_goto_definition(
 
     warn!("Gotodef Position: {position:?}");
 
-    let mut w = state.0.try_write()?;
-
-    let doc_tokens = w
-        .documents
-        .get(&uri)
-        .ok_or(crate::other_err!("document not present: {uri:#?}"))?
-        .clone();
-
-    let (comment, idx) = match doc_tokens.comment_in_position(&position) {
-        Some((com, i)) => (com.clone(), i),
-        None => {
-            warn!("tried to activate goto-def where there was no comment");
-            return Ok(());
-        }
-    };
-
-    let request = Into::<InteractLspRequest>::into(params);
-
-    let doc_info = InteractDocumentInfo {
-        tokens: &doc_tokens,
-        my_pos: idx,
-        uri: &uri,
-    };
-    comment
-        .execute_from_lsp_message(&mut w, &mut sender, (request, req.id), doc_info)
-        .await
-        .expect("failed to execute parsed comment");
-
-    if w.database.is_some() {
-        w.save_agent_memories_to_database().await?;
-    }
+    // let mut w = state.0.try_write()?;
+    //
+    // let doc_tokens = w
+    //     .documents
+    //     .get(&uri)
+    //     .ok_or(crate::other_err!("document not present: {uri:#?}"))?
+    //     .clone();
+    //
+    // let (comment, idx) = match doc_tokens.comment_in_position(&position) {
+    //     Some((com, i)) => (com.clone(), i),
+    //     None => {
+    //         warn!("tried to activate goto-def where there was no comment");
+    //         return Ok(());
+    //     }
+    // };
+    //
+    // let request = Into::<InteractLspRequest>::into(params);
+    //
+    // let doc_info = InteractDocumentInfo {
+    //     tokens: &doc_tokens,
+    //     my_pos: idx,
+    //     uri: &uri,
+    // };
+    // comment
+    //     .execute_from_lsp_message(&mut w, &mut sender, (request, req.id), doc_info)
+    //     .await
+    //     .expect("failed to execute parsed comment");
+    //
+    // if w.database.is_some() {
+    //     w.save_agent_memories_to_database().await?;
+    // }
     Ok(())
 }
 
@@ -114,33 +109,33 @@ pub async fn handle_hover(
         .clone();
     let position = params.text_document_position_params.position;
 
-    let mut w = state.0.try_write().expect("failed to get write guard");
-
-    let doc_tokens = w
-        .documents
-        .get(&uri)
-        .ok_or(crate::other_err!("document not present: {uri:#?}"))?
-        .clone();
-    let (comment, idx) = match doc_tokens.comment_in_position(&position) {
-        Some((com, i)) => (com.clone(), i),
-        None => {
-            warn!("tried to activate hover where there was no comment");
-            return Ok(());
-        }
-    };
-
-    let request = Into::<InteractLspRequest>::into(params);
-
-    let doc_info = InteractDocumentInfo {
-        tokens: &doc_tokens,
-        my_pos: idx,
-        uri: &uri,
-    };
-    comment
-        .execute_from_lsp_message(&mut w, &mut sender, (request, req.id), doc_info)
-        .await
-        .expect("failed to execute parsed comment");
-
+    // let mut w = state.0.try_write().expect("failed to get write guard");
+    //
+    // let doc_tokens = w
+    //     .documents
+    //     .get(&uri)
+    //     .ok_or(crate::other_err!("document not present: {uri:#?}"))?
+    //     .clone();
+    // let (comment, idx) = match doc_tokens.comment_in_position(&position) {
+    //     Some((com, i)) => (com.clone(), i),
+    //     None => {
+    //         warn!("tried to activate hover where there was no comment");
+    //         return Ok(());
+    //     }
+    // };
+    //
+    // let request = Into::<InteractLspRequest>::into(params);
+    //
+    // let doc_info = InteractDocumentInfo {
+    //     tokens: &doc_tokens,
+    //     my_pos: idx,
+    //     uri: &uri,
+    // };
+    // comment
+    //     .execute_from_lsp_message(&mut w, &mut sender, (request, req.id), doc_info)
+    //     .await
+    //     .expect("failed to execute parsed comment");
+    //
     Ok(())
 }
 
@@ -151,7 +146,7 @@ async fn handle_diagnostics(
 ) -> MainResult<()> {
     let params: DocumentDiagnosticParams =
         serde_json::from_value::<DocumentDiagnosticParams>(req.params)?;
-    let w = state.0.try_write()?;
+    // let w = state.0.try_write()?;
     // sender
     //     .send_operation(
     //         LspDiagnostic::diagnose_document(params.text_document.uri, &mut w.store)?.into(),

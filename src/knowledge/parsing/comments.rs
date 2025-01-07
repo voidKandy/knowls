@@ -1,19 +1,25 @@
-use super::{super::logic::Interact, comment_str_map::COMMENT_EXTENSION_MAP};
+use super::comment_str_map::COMMENT_EXTENSION_MAP;
 use lsp_types::Range;
 use serde::{Deserialize, Serialize};
-use std::{fmt::Debug, sync::LazyLock};
+use std::{fmt::Debug, marker::PhantomData, sync::LazyLock};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ParsedComment<'i> {
-    pub interact: Option<Interact<'i>>,
+    // pub interact: Option<Interact<'i>>,
+    m: PhantomData<&'i ()>,
     pub content: String,
     pub range: Range,
 }
 
 impl<'i> ParsedComment<'i> {
-    pub fn new(interact: Option<Interact<'i>>, content: &str, range: Range) -> Self {
+    pub fn new(
+        // interact: Option<Interact<'i>>,
+        content: &str,
+        range: Range,
+    ) -> Self {
         Self {
-            interact,
+            m: PhantomData,
+            // interact,
             content: content.to_string(),
             range,
         }

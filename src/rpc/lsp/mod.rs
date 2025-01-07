@@ -1,4 +1,5 @@
-use crate::{state::LspState, MainErr, MainResult};
+use crate::server::ServerStateWriteGuard;
+use crate::{MainErr, MainResult};
 use buffer_operations::BufferOpChannelHandler;
 use buffer_operations::BufferOpChannelSender;
 use lsp_server::Message as LSPMessage;
@@ -18,10 +19,10 @@ pub fn handle_other(msg: LSPMessage) -> MainResult<BufferOpChannelHandler> {
 pub type BufferOpChannelJoinHandle = tokio::task::JoinHandle<MainResult<()>>;
 
 pub type HandlerSharedState<'outer, 'inner, 'state> =
-    Arc<Mutex<&'outer mut RwLockWriteGuard<'inner, LspState<'state>>>>;
+    Arc<Mutex<&'outer mut ServerStateWriteGuard<'inner>>>;
 
 pub fn new_handler_shared_state<'outer, 'inner, 'state>(
-    w: &'outer mut RwLockWriteGuard<'inner, LspState<'state>>,
+    w: &'outer mut ServerStateWriteGuard<'inner>,
 ) -> HandlerSharedState<'outer, 'inner, 'state> {
     Arc::new(Mutex::new(w))
 }
