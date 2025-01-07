@@ -3,6 +3,7 @@ pub mod config;
 pub mod database;
 pub mod error;
 pub mod interact;
+pub mod scratch;
 pub mod server;
 pub mod sockets;
 pub mod state;

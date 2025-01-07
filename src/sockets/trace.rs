@@ -54,6 +54,14 @@ pub static CLI_TRACING: LazyLock<()> = LazyLock::new(|| {
     init_subscriber(sub);
 });
 
+pub static APP_TRACING: LazyLock<()> = LazyLock::new(|| {
+    let default_filter_level = "debug".to_string();
+    let subscriber_name = "lsp".to_string();
+
+    let sub = get_subscriber(subscriber_name, default_filter_level, std::io::stdout);
+    init_subscriber(sub);
+});
+
 pub static RELAY_TRACING: LazyLock<()> = LazyLock::new(|| {
     let config = LspConfig::parse();
     let default_filter_level = "debug".to_string();

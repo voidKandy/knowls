@@ -42,47 +42,47 @@ pub struct LspState<'i> {
 
 impl<'i> LspState<'i> {
     #[tracing::instrument(name = "initializing state", skip_all)]
-    pub async fn new(config: &Config) -> MainResult<Self> {
-        let database = match &config.database {
-            Some(db_config) => Some(
-                Database::new(db_config.clone())
-                    .await
-                    .expect("failed to get database"),
-            ),
-            None => None,
-        };
-
-        warn!("got database");
-
-        let mut agents = Agents::from(config.model.clone());
-        warn!("got agents");
-        if let Some(ref agents_config) = &config.agents {
-            for (agent_id, agent_settings) in agents_config.clone().into_iter() {
-                match agent_id {
-                    AgentID::Uri(uri_str) => {
-                        warn!("Did not expect to encounter a uri agent here, encountered: {uri_str:#?}")
-                    }
-                    AgentID::Global => {
-                        let global_agent = agents.get_agent_mut(agent_id).expect("No global?");
-                        agent_settings.change_agent(global_agent);
-                    }
-                    AgentID::Char(char) => {
-                        agents.create_custom_agent(char, agent_settings.sys_prompt);
-                    }
-                }
-            }
-        }
-
-        let state = Self {
-            attached: None,
-            documents: HashMap::new(),
-            database,
-            agents,
-        };
-
-        warn!("initialized state: {state:#?}");
-        Ok(state)
-    }
+    // pub async fn new(config: &Config) -> MainResult<Self> {
+    // let database = match &config.database {
+    //     Some(db_config) => Some(
+    //         Database::new(db_config.clone())
+    //             .await
+    //             .expect("failed to get database"),
+    //     ),
+    //     None => None,
+    // };
+    //
+    // warn!("got database");
+    //
+    // let mut agents = Agents::from(&config.model.clone());
+    // warn!("got agents");
+    // if let Some(ref agents_config) = &config.agents {
+    //     for (agent_id, agent_settings) in agents_config.clone().into_iter() {
+    //         match agent_id {
+    //             AgentID::Uri(uri_str) => {
+    //                 warn!("Did not expect to encounter a uri agent here, encountered: {uri_str:#?}")
+    //             }
+    //             AgentID::Global => {
+    //                 let global_agent = agents.get_agent_mut(agent_id).expect("No global?");
+    //                 agent_settings.change_agent(global_agent);
+    //             }
+    //             AgentID::Char(char) => {
+    //                 agents.create_custom_agent(char, agent_settings.sys_prompt);
+    //             }
+    //         }
+    //     }
+    // }
+    //
+    //     let state = Self
+    //         attached: None,
+    //         documents: HashMap::new(),
+    //         database,
+    //         agents,
+    //     };
+    //
+    //     warn!("initialized state: {state:#?}");
+    //     Ok(state)
+    // }
 
     pub fn as_shared(self) -> SharedState<'i> {
         SharedState(Arc::new(RwLock::new(self)))
@@ -144,7 +144,7 @@ impl<'i> LspState<'i> {
 
     #[tracing::instrument(name = "update agents and doc", skip(self))]
     pub fn update_doc_and_agents_from_text(&mut self, uri: Uri, text: &str) -> MainResult<()> {
-        self.agents.update_or_create_doc_agent(&uri, &text);
+        // self.agents.update_or_create_doc_agent(&uri, &text);
 
         let ext = language_ext_from_uri(&uri);
         let mut lexer = Lexer::new(&text, ext);

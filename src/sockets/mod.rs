@@ -1,13 +1,9 @@
-pub mod client;
+// pub mod client;
 pub mod rpc;
-pub mod server;
-mod trace;
+// pub mod server;
+pub mod trace;
 use crate::other_err;
 
-pub use self::{
-    // cli::{handle_cli_req, send_request, wait_for_response},
-    trace::{CLI_TRACING, CLI_TRACING_LOG_FILE, RELAY_TRACING},
-};
 use std::{fmt::Debug, path::Path, time::Duration};
 use tokio::net::{UnixListener, UnixStream};
 use tracing::warn;

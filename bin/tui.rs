@@ -3,8 +3,8 @@ use clap::Parser;
 use espx_lsp_server::{
     config::Config,
     sockets::{
-        init_serverside_listener_and_stream, CLIENTSIDE_RELAY_ADDR, CLI_TRACING,
-        CLI_TRACING_LOG_FILE, SERVERSIDE_RELAY_ADDR,
+        init_serverside_listener_and_stream, trace::CLI_TRACING, trace::CLI_TRACING_LOG_FILE,
+        CLIENTSIDE_RELAY_ADDR, SERVERSIDE_RELAY_ADDR,
     },
     state::SharedState,
 };

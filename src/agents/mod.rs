@@ -1,4 +1,4 @@
-use crate::{config::espx::ModelConfig, other_err, MainErr};
+use crate::{config::espx::ModelConfig, other_err, MainErr, MainResult};
 use espionox::{
     agents::{memory::MessageStackRef, Agent},
     prelude::Message,
@@ -7,11 +7,11 @@ pub use inits::{doc_control_role, ASSISTANT_AGENT_SYSTEM_PROMPT};
 use lsp_types::{MarkedString, Uri};
 use std::{collections::HashMap, str::FromStr};
 use tracing::warn;
-mod inits;
+pub mod inits;
 
 #[derive(Debug)]
 pub struct Agents {
-    pub config: ModelConfig,
+    // pub config: ModelConfig,
     map: HashMap<AgentID, Agent>,
 }
 
@@ -95,12 +95,12 @@ impl TryInto<char> for AgentID {
     }
 }
 
-impl From<ModelConfig> for Agents {
-    fn from(cfg: ModelConfig) -> Self {
+impl From<&ModelConfig> for Agents {
+    fn from(cfg: &ModelConfig) -> Self {
         let mut map = HashMap::new();
         let global = self::inits::global(&cfg);
         map.insert(AgentID::Global, global);
-        Self { config: cfg, map }
+        Self { map }
     }
 }
 
@@ -124,6 +124,11 @@ pub fn message_stack_into_marked_string(mut stack: MessageStackRef<'_>) -> Marke
 }
 
 impl Agents {
+    pub fn new() -> Self {
+        Self {
+            map: HashMap::new(),
+        }
+    }
     pub fn get_agent_ref(&self, key: impl Into<AgentID>) -> Option<&Agent> {
         let id: AgentID = key.into();
         self.map.get(&id)
@@ -133,6 +138,11 @@ impl Agents {
         self.map.get_mut(&id)
     }
 
+    pub fn remove(&mut self, key: impl Into<AgentID>) -> Option<Agent> {
+        let id: AgentID = key.into();
+        self.map.remove(&id)
+    }
+
     pub fn iter_agents(&self) -> std::collections::hash_map::Iter<'_, AgentID, Agent> {
         self.map.iter()
     }
@@ -140,32 +150,46 @@ impl Agents {
         self.map.iter_mut()
     }
 
-    pub fn insert_agent(&mut self, key: impl Into<AgentID>, agent: Agent) {
+    pub fn insert(&mut self, key: impl Into<AgentID>, agent: Agent) {
         let id: AgentID = key.into();
         self.map.insert(id, agent);
     }
 
-    pub fn update_or_create_doc_agent(&mut self, uri: &Uri, doc_content: &str) {
-        let role = doc_control_role();
-        match self.get_agent_mut(uri) {
-            Some(agent) => {
-                agent.cache.mut_filter_by(&role, false);
-                agent.cache.push(Message {
-                    role,
-                    content: doc_content.to_owned(),
-                });
-            }
-            None => {
-                let agent = self::inits::document(&self.config, doc_content);
-                self.insert_agent(uri, agent);
-            }
-        }
+    /// Errors if the agent does not exist
+    pub fn push_to_agent_cache(
+        &mut self,
+        key: impl Into<AgentID>,
+        message: Message,
+    ) -> MainResult<()> {
+        let id = Into::<AgentID>::into(key);
+        let agent = self
+            .get_agent_mut(&id)
+            .ok_or(other_err!("agent with id: {id:#?} does not exist"))?;
+        agent.cache.push(message);
+        Ok(())
     }
 
-    pub fn create_custom_agent(&mut self, char: char, sys_prompt: String) {
-        let agent = self::inits::custom(&self.config, sys_prompt);
-        self.insert_agent(AgentID::Char(char), agent);
-    }
+    // pub fn update_or_create_doc_agent(&mut self, uri: &Uri, doc_content: &str) {
+    //     let role = doc_control_role();
+    //     match self.get_agent_mut(uri) {
+    //         Some(agent) => {
+    //             agent.cache.mut_filter_by(&role, false);
+    //             agent.cache.push(Message {
+    //                 role,
+    //                 content: doc_content.to_owned(),
+    //             });
+    //         }
+    //         None => {
+    //             let agent = self::inits::document(&self.config, doc_content);
+    //             self.insert_agent(uri, agent);
+    //         }
+    //     }
+    // }
+
+    // pub fn create_custom_agent(&mut self, char: char, sys_prompt: String) {
+    //     let agent = self::inits::custom(&self.config, sys_prompt);
+    //     self.insert_agent(AgentID::Char(char), agent);
+    // }
 
     pub fn get_last_n_messages(agent: &Agent, n: usize) -> MessageStackRef {
         let messages: Vec<&Message> = agent.cache.as_ref().iter().rev().take(n).collect();

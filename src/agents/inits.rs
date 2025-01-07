@@ -70,7 +70,7 @@ pub(super) fn document(cfg: &ModelConfig, doc_content: &str) -> Agent {
     agent
 }
 
-pub(super) fn custom(cfg: &ModelConfig, sys_prompt: String) -> Agent {
+pub fn custom(cfg: &ModelConfig, sys_prompt: String) -> Agent {
     let provider: CompletionProvider = match cfg.provider {
         ModelProvider::OpenAi => OpenAiCompletionModel::Gpt4.into(),
         ModelProvider::Anthropic => AnthropicCompletionModel::Sonnet.into(),

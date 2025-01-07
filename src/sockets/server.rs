@@ -107,60 +107,60 @@ impl LspApplicationServer {
     #[tracing::instrument(name = "relay server main loop", skip_all)]
     pub async fn main_loop(mut self) {
         let mut buf = [0; 1024];
-        let mut send_back_queue = VecDeque::new();
-        loop {
-            let ready = self
-                .socket_stream
-                .ready(Interest::READABLE | Interest::WRITABLE)
-                .await
-                .expect("could not get ready state");
-
-            if ready.is_readable() {
-                match self.socket_stream.try_read(&mut buf) {
-                    Ok(0) => {
-                        warn!("connection with client closed");
-                        break;
-                    }
-                    Ok(n) => {
-                        warn!("client read {n} bytes");
-                        let msg = serde_json::from_slice::<lsp_server::Message>(&buf[..n])
-                            .expect("failed to deserialize buffer");
-                        warn!("Received on server side: {msg:#?}");
-                        if let Some(msg) = self
-                            .handle_lsp_message(msg)
-                            .await
-                            .expect("failed to handle lsp message")
-                        {
-                            send_back_queue.push_back(msg);
-                        }
-                    }
-                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        warn!("reading from server stream would block");
-                    }
-                    Err(e) => {
-                        panic!("error in server receiving: {e:#?}")
-                    }
-                }
-            }
-            if let Some(msg) = send_back_queue.pop_front() {
-                if ready.is_writable() {
-                    let v = serde_json::to_vec(&msg).expect("failed to serialize message");
-                    match self.socket_stream.try_write(&v) {
-                        Ok(_) => {
-                            warn!("successfully sent message to relay client");
-                        }
-                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                            warn!(
-                                "writing from server stream would block, pushing msg back to queue"
-                            );
-                            send_back_queue.push_front(msg);
-                        }
-                        Err(e) => {
-                            panic!("error in server sending: {e:#?}")
-                        }
-                    }
-                }
-            }
-        }
+        //     let mut send_back_queue = VecDeque::new();
+        //     loop {
+        //         let ready = self
+        //             .socket_stream
+        //             .ready(Interest::READABLE | Interest::WRITABLE)
+        //             .await
+        //             .expect("could not get ready state");
+        //
+        //         if ready.is_readable() {
+        //             match self.socket_stream.try_read(&mut buf) {
+        //                 Ok(0) => {
+        //                     warn!("connection with client closed");
+        //                     break;
+        //                 }
+        //                 Ok(n) => {
+        //                     warn!("client read {n} bytes");
+        //                     let msg = serde_json::from_slice::<lsp_server::Message>(&buf[..n])
+        //                         .expect("failed to deserialize buffer");
+        //                     warn!("Received on server side: {msg:#?}");
+        //                     if let Some(msg) = self
+        //                         .handle_lsp_message(msg)
+        //                         .await
+        //                         .expect("failed to handle lsp message")
+        //                     {
+        //                         send_back_queue.push_back(msg);
+        //                     }
+        //                 }
+        //                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+        //                     warn!("reading from server stream would block");
+        //                 }
+        //                 Err(e) => {
+        //                     panic!("error in server receiving: {e:#?}")
+        //                 }
+        //             }
+        //         }
+        //         if let Some(msg) = send_back_queue.pop_front() {
+        //             if ready.is_writable() {
+        //                 let v = serde_json::to_vec(&msg).expect("failed to serialize message");
+        //                 match self.socket_stream.try_write(&v) {
+        //                     Ok(_) => {
+        //                         warn!("successfully sent message to relay client");
+        //                     }
+        //                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+        //                         warn!(
+        //                             "writing from server stream would block, pushing msg back to queue"
+        //                         );
+        //                         send_back_queue.push_front(msg);
+        //                     }
+        //                     Err(e) => {
+        //                         panic!("error in server sending: {e:#?}")
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //     }
     }
 }

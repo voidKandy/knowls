@@ -14,53 +14,6 @@ use tracing::warn;
 
 use crate::helpers::TEST_TRACING;
 
-pub fn test_config(with_database: bool) -> MainResult<Config> {
-    dotenv::dotenv().ok();
-    LazyLock::force(&TEST_TRACING);
-    let key = std::env::var("ANTHROPIC_KEY").unwrap();
-
-    let database_str = match with_database {
-        true => {
-            r#"
-            [database]
-            namespace="espx" 
-            database="espx"
-            user="root"
-            pass="root""#
-        }
-        false => "",
-    };
-
-    let input = format!(
-        r#"
-            [model]
-            provider="Anthropic"
-            api_key="{key}"
-
-            {database_str}
-
-            [agents]
-             [agents._]
-                sys_prompt = "you are batman"
-             [agents.c]
-             [agents.b]
-                 sys_prompt = "prompt"
-
-        "#
-    );
-    let cnfg: ConfigFromFile = match toml::from_str(&input) {
-        Ok(c) => c,
-        Err(err) => panic!("CONFIG ERROR: {:?}", err),
-    };
-
-    warn!("got from file config: {:?}", cnfg);
-    Ok(Config::from((cnfg, pwd())))
-}
-
-fn pwd() -> PathBuf {
-    std::env::current_dir().unwrap().canonicalize().unwrap()
-}
-
 #[tokio::test]
 async fn config_builds_correctly() {
     LazyLock::force(&TEST_TRACING);

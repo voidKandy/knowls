@@ -1,4 +1,4 @@
-use espx_lsp_server::sockets::RELAY_TRACING;
+use espx_lsp_server::sockets::trace::RELAY_TRACING;
 use std::sync::LazyLock;
 
 #[tokio::main]

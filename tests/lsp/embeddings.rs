@@ -1,5 +1,3 @@
-use crate::helpers::test_state;
-
 #[tokio::test]
 async fn embeddings_work() {
     let out = espx_lsp_server::embeddings::embed_sentences(vec![
