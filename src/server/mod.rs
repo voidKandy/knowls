@@ -13,26 +13,23 @@ use tokio::{
 };
 
 #[derive(Debug)]
-pub struct Server<'s> {
+pub struct Server {
     listener: TcpListener,
-    state: Arc<RwLock<ServerState<'s>>>,
+    state: Arc<RwLock<ServerState>>,
     connections: HashMap<String, JoinHandle<()>>,
 }
 
-pub type ServerStateWriteGuard<'g> = RwLockWriteGuard<'g, ServerState<'static>>;
-pub type SharedState<'s> = Arc<RwLock<ServerState<'s>>>;
+pub type ServerStateWriteGuard<'g> = RwLockWriteGuard<'g, ServerState>;
+pub type SharedState<'s> = Arc<RwLock<ServerState>>;
 #[derive(Debug)]
-pub struct ServerState<'s> {
+pub struct ServerState {
     pub(crate) config: Config,
     pub(crate) db: Option<Database>,
     pub(crate) agents: Agents,
-    pub(crate) knowledge: HashMap<surrealdb::sql::Id, Knowledge<'s>>,
+    pub(crate) knowledge: HashMap<surrealdb::sql::Id, Knowledge>,
 }
 
-impl<'s> Server<'s>
-where
-    's: 'static,
-{
+impl Server {
     pub async fn new(config: Config, addr: impl ToSocketAddrs) -> Self {
         let listener = TcpListener::bind(addr).await.expect("could not bind addr");
         let state = ServerState::from_config(config).await;
@@ -63,7 +60,7 @@ where
     }
 }
 
-impl<'s> ServerState<'s> {
+impl ServerState {
     pub async fn from_config(config: Config) -> Self {
         let db = match &config.database {
             Some(db_config) => Some(

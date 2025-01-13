@@ -3,7 +3,22 @@ use super::{
     diagnostics::LspDiagnostic,
     show_notification_err, BufferOpChannelJoinHandle,
 };
-use crate::{other_err, server::SharedState, MainResult};
+use crate::{
+    agents::AgentID,
+    interact::{
+        agent::{AgentInteract, AgentInteractExArgs},
+        execution::InteractDocumentInfo,
+        Interact, InteractLspNotification, InteractVar,
+    },
+    knowledge::{
+        parsing::{language_ext_from_uri, lexer::Lexer, tokens::Token},
+        uri_to_surreal_id,
+    },
+    other_err,
+    server::SharedState,
+    util::Diff,
+    MainResult,
+};
 use lsp_server::Notification;
 use lsp_types::{
     DidChangeTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
@@ -86,25 +101,57 @@ pub async fn handle_didSave<'s>(
         .to_owned();
     let uri = params.text_document.uri.clone();
 
-    // let mut w = state.0.try_write()?;
-    // w.update_doc_and_agents_from_text(uri.clone(), &text)
-    //     .expect("could not update doc and agents");
+    let mut w = state.try_write().expect("failed to get write lock");
+    let ext = language_ext_from_uri(&uri);
+    let mut lexer = Lexer::new(&text, ext);
+    let new_tokens = lexer.lex_input();
+    let knowledge_id = uri_to_surreal_id(&uri);
+
+    if let Some(crate::knowledge::Knowledge::Document(old_tokens)) =
+        w.knowledge.remove(&knowledge_id)
+    {
+        let diff = Diff::get_diffs(&old_tokens, &new_tokens);
+        for d in diff.iter() {
+            let idx = match d {
+                Diff::Delete(idx) => idx,
+                Diff::Insert(idx, _) => idx,
+                Diff::Change(idx, _) => idx,
+            };
+
+            if let Some(interact) = old_tokens.get(*idx).as_ref().and_then(|t| {
+                if let Token::Comment(c) = t {
+                    Interact::try_from_str(&c.content)
+                } else {
+                    None
+                }
+            }) {
+                let doc_info = InteractDocumentInfo {
+                    tokens: &old_tokens,
+                    my_pos: *idx,
+                    uri: &uri,
+                };
+                match interact.variant {
+                    InteractVar::DB(_) => {}
+                    InteractVar::Agent(int) => {
+                        let agent_id = interact.parsed_args.first().and_then(|arg| {
+                            arg.as_char()
+                                .and_then(|ch| Some(AgentID::from((&uri, *ch))))
+                        });
+                        if let Some(agent) = w.agents.get_agent_mut(agent_id.unwrap()) {
+                            AgentInteract::push_interact_diff_handle(&int, agent, d, doc_info)?;
+                        }
+                    }
+                };
+            }
+        }
+    }
+
+    w.knowledge.insert(
+        knowledge_id,
+        crate::knowledge::Knowledge::Document(new_tokens),
+    );
 
     // let notification = Into::<InteractLspNotification>::into(params);
-
-    // must be cloned so a &mut of w can be held
-    // let tokens = w.documents.get(&uri).cloned().unwrap();
-    // for (pos, parsed_comment) in tokens.into_iter() {
-    //     let doc_info = InteractDocumentInfo {
-    //         tokens: &tokens,
-    //         my_pos: pos,
-    //         uri: &uri,
-    //     };
-    //     parsed_comment
-    //         .execute_from_lsp_message(&mut w, &mut sender, notification.clone(), doc_info)
-    //         .await
-    //         .expect("failed to execute parsed comment");
-    // }
 
     // if w.database.is_some() {
     //     w.save_docs_to_database()
@@ -115,9 +162,9 @@ pub async fn handle_didSave<'s>(
     //         .expect("failed to save agent memories");
     // }
 
-    // sender
-    //     .send_operation(LspDiagnostic::diagnose_document(uri, &mut w)?.into())
-    //     .await?;
+    sender
+        .send_operation(LspDiagnostic::diagnose_document(uri, &mut w)?.into())
+        .await?;
     Ok(())
 }
 

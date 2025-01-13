@@ -138,15 +138,15 @@ async fn main() {
     let mut client = match Client::connect(addr).await.map(RelayClient::new) {
         Ok(client) => client,
         Err(_) => {
-            tracing::warn!("server is not running, need to spin up");
-            let mut server = Server::new(config, addr).await;
-            tracing::warn!("created server");
-            tokio::spawn(async move { server.main_loop().await });
-            sleep(Duration::from_millis(500)).await;
-            Client::connect(addr)
-                .await
-                .map(RelayClient::new)
-                .expect("should not fail to start relay client")
+            panic!("server is not running, need to spin up");
+            // let mut server = Server::new(config, addr).await;
+            // tracing::warn!("created server");
+            // tokio::spawn(async move { server.main_loop().await });
+            // sleep(Duration::from_millis(500)).await;
+            // Client::connect(addr)
+            //     .await
+            //     .map(RelayClient::new)
+            //     .expect("should not fail to start relay client")
         }
     };
 

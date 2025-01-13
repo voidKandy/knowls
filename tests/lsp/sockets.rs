@@ -2,8 +2,9 @@ use std::{sync::LazyLock, thread::sleep, time::Duration};
 
 use crate::helpers::{test_config, TEST_TRACING};
 use espx_lsp_server::{
-    scratch::{Client, Server, TcpPacket},
-    sockets::rpc::ServerRelayRequest,
+    client::Client,
+    rpc::messages::{LspRelayRequest, LspRelayResponse, Response, RpcMessage, RpcPacket},
+    server::Server,
 };
 use seraphic::JSONRPC_FIELD;
 
@@ -35,46 +36,33 @@ async fn client_server_comms() {
         .await
         .expect("should not fail to start relay client");
 
-    let req = ServerRelayRequest {
-        payload: lsp_server::Message::Notification(lsp_server::Notification {
-            method: "test".to_string(),
-            params: serde_json::json!({}),
-        }),
+    let req = LspRelayRequest {
+        payload: serde_json::to_value(lsp_server::Message::Notification(
+            lsp_server::Notification {
+                method: "test".to_string(),
+                params: serde_json::json!({}),
+            },
+        ))
+        .unwrap(),
     };
 
-    let expected = seraphic::socket::Response {
-        jsonrpc: JSONRPC_FIELD.to_string(),
-        id: "1".to_string(),
-        error: None,
-        result: Some(serde_json::to_value(&req.payload).unwrap()),
+    let expected = LspRelayResponse {
+        payload: Some(serde_json::to_value(&req.payload).unwrap()),
     };
 
-    client.send(req, "1").await.unwrap();
+    client.send(req.into(), "1").await.unwrap();
 
-    let res: seraphic::socket::Response = TcpPacket::read_from_stream(&mut client.stream)
+    let res = if let RpcMessage::Res { id, res } = RpcPacket::async_read(&mut client.stream)
         .await
         .unwrap()
-        .try_into()
-        .unwrap();
-
-    assert_eq!(res, expected);
-    tracing::warn!("got expected response from server!");
-
-    let req = ServerRelayRequest {
-        payload: lsp_server::Message::Notification(lsp_server::Notification {
-            method: "test".to_string(),
-            params: serde_json::json!({}),
-        }),
-    };
-    client.send(req, "1").await.unwrap();
-
-    let res: seraphic::socket::Response = TcpPacket::read_from_stream(&mut client.stream)
-        .await
         .unwrap()
-        .try_into()
-        .unwrap();
+    {
+        res
+    } else {
+        panic!("got unexpected read")
+    };
 
-    assert_eq!(res, expected);
+    assert_eq!(res, Response::from(expected));
 
     tracing::warn!("got expected response from server!");
 }

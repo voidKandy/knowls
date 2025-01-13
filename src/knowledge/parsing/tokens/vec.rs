@@ -4,19 +4,19 @@ use std::{cmp::Ordering, fmt::Debug};
 use tracing::warn;
 
 #[derive(Debug, Clone)]
-pub struct TokenVec<'i> {
-    pub(super) vec: Vec<Token<'i>>,
+pub struct TokenVec {
+    pub(super) vec: Vec<Token>,
     comment_indices: Vec<usize>,
 }
 
-impl<'i> AsRef<Vec<Token<'i>>> for TokenVec<'i> {
-    fn as_ref(&self) -> &Vec<Token<'i>> {
+impl AsRef<Vec<Token>> for TokenVec {
+    fn as_ref(&self) -> &Vec<Token> {
         &self.vec
     }
 }
 
 /// Converts TokenVec to string, but only including Block tokens
-impl<'i> ToString for TokenVec<'i> {
+impl ToString for TokenVec {
     fn to_string(&self) -> String {
         let mut buffer = String::new();
         for tok in self.vec.iter() {
@@ -29,8 +29,8 @@ impl<'i> ToString for TokenVec<'i> {
 }
 
 /// Helper iterator through all ParsedComment vectors
-impl<'o, 'i> IntoIterator for &'o TokenVec<'i> {
-    type Item = (usize, &'o ParsedComment<'i>);
+impl<'o> IntoIterator for &'o TokenVec {
+    type Item = (usize, &'o ParsedComment);
     type IntoIter = std::vec::IntoIter<Self::Item>;
     fn into_iter(self) -> Self::IntoIter {
         let mut comments = vec![];
@@ -44,8 +44,8 @@ impl<'o, 'i> IntoIterator for &'o TokenVec<'i> {
     }
 }
 
-impl<'i> TokenVec<'i> {
-    pub fn new(vec: Vec<Token<'i>>, comment_indices: Vec<usize>) -> Self {
+impl TokenVec {
+    pub fn new(vec: Vec<Token>, comment_indices: Vec<usize>) -> Self {
         for idx in comment_indices.iter() {
             match vec.iter().nth(*idx) {
                 Some(Token::Comment(_)) => {}

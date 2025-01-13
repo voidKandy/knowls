@@ -4,22 +4,14 @@ use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, marker::PhantomData, sync::LazyLock};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ParsedComment<'i> {
-    // pub interact: Option<Interact<'i>>,
-    m: PhantomData<&'i ()>,
+pub struct ParsedComment {
     pub content: String,
     pub range: Range,
 }
 
-impl<'i> ParsedComment<'i> {
-    pub fn new(
-        // interact: Option<Interact<'i>>,
-        content: &str,
-        range: Range,
-    ) -> Self {
+impl ParsedComment {
+    pub fn new(content: &str, range: Range) -> Self {
         Self {
-            m: PhantomData,
-            // interact,
             content: content.to_string(),
             range,
         }

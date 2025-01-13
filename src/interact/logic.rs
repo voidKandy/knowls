@@ -1,11 +1,8 @@
-use super::{
-    agent::AgentInteract,
-    database::DBInteract,
-    execution::InteractDocumentInfo,
-    parsing::{comments::ParsedComment, tokens::Token},
-};
+use super::{agent::AgentInteract, database::DBInteract, execution::InteractDocumentInfo};
 use crate::{
-    rpc::lsp::buffer_operations::BufferOpChannelSender, server::ServerState, util::Diff, MainResult,
+    knowledge::parsing::comments::ParsedComment,
+    rpc::lsp::buffer_operations::BufferOpChannelSender, server::ServerState, util::Diff,
+    MainResult,
 };
 use lsp_server::RequestId;
 use lsp_types::{
@@ -35,14 +32,14 @@ impl InteractVar {
     pub const DATABASE_STATE: Self = Self::DB(DBInteract);
 }
 
-pub type ServerStateWriteGuard<'g> = RwLockWriteGuard<'g, ServerState<'static>>;
+pub type ServerStateWriteGuard<'g> = RwLockWriteGuard<'g, ServerState>;
 pub trait LspMessageInteract<'i, 'g, ARGS>: std::fmt::Debug + Copy {
     fn diagnostics(&self, args: ARGS) -> Vec<Diagnostic>;
 
     fn get_execution_args(
         &self,
         w: &'i mut ServerStateWriteGuard<'g>,
-        interact_comment: &'i ParsedComment<'_>,
+        interact_comment: &'i ParsedComment,
         doc_info: InteractDocumentInfo<'i>,
         args: &Vec<InteractArg>,
     ) -> Option<ARGS>;

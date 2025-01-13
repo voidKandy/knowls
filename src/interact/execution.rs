@@ -1,30 +1,30 @@
-use super::{
-    logic::LspMessageInteract,
-    parsing::{comments::ParsedComment, tokens::vec::TokenVec},
-    InteractLspMessage, InteractVar,
-};
+use super::{logic::LspMessageInteract, Interact, InteractLspMessage, InteractVar};
 use crate::{
-    other_err, server::buffer_operations::BufferOpChannelSender, state::LspState, MainResult,
+    knowledge::parsing::{comments::ParsedComment, tokens::vec::TokenVec},
+    other_err,
+    rpc::lsp::buffer_operations::BufferOpChannelSender,
+    server::ServerState,
+    MainResult,
 };
 use lsp_types::{Diagnostic, Uri};
 use tokio::sync::RwLockWriteGuard;
 
 #[derive(Debug)]
 pub struct InteractDocumentInfo<'i> {
-    pub tokens: &'i TokenVec<'i>,
+    pub tokens: &'i TokenVec,
     pub my_pos: usize,
     pub uri: &'i Uri,
 }
 
-impl<'i> ParsedComment<'i> {
-    pub async fn execute_from_lsp_message(
+impl ParsedComment {
+    pub async fn execute_from_lsp_message<'i>(
         &self,
-        w: &'_ mut RwLockWriteGuard<'_, LspState<'static>>,
+        w: &'_ mut RwLockWriteGuard<'_, ServerState>,
         sender: &mut BufferOpChannelSender,
         message: impl Into<InteractLspMessage>,
         doc_info: InteractDocumentInfo<'i>,
     ) -> MainResult<()> {
-        if let Some(interact) = &self.interact {
+        if let Some(interact) = Interact::try_from_str(&self.content) {
             let message = Into::<InteractLspMessage>::into(message);
 
             // let report = format!(

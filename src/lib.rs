@@ -3,7 +3,7 @@ pub mod client;
 pub mod config;
 pub mod database;
 pub mod error;
-// pub mod interact;
+pub mod interact;
 pub mod knowledge;
 pub mod rpc;
 pub mod server;

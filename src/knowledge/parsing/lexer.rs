@@ -107,8 +107,8 @@ impl<'input> Lexer<'input> {
     }
 
     #[tracing::instrument(name = "lex input into TokenVec")]
-    pub fn lex_input<'i>(&mut self, // , registry: &InteractRegistry
-    ) -> TokenVec<'i> {
+    pub fn lex_input(&mut self, // , registry: &InteractRegistry
+    ) -> TokenVec {
         let mut vec = vec![];
         let mut comment_indices = vec![];
         let mut start_opt = Option::<Position>::None;

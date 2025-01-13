@@ -4,7 +4,6 @@
 use espx_lsp_server::{
     config::{Config, ConfigFromFile},
     rpc::lsp::buffer_operations::BufferOpChannelHandler,
-    server::buffer_operations::BufferOpChannelHandler, // state::{LspState, SharedState},
 };
 use std::{path::PathBuf, sync::LazyLock};
 use tracing::{info, subscriber::set_global_default, Subscriber};

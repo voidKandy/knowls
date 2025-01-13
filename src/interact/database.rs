@@ -1,10 +1,14 @@
 use super::{
     execution::InteractDocumentInfo,
     logic::{InteractArg, LspMessageInteract, ServerStateWriteGuard},
-    parsing::comments::ParsedComment,
     InteractLspRequest,
 };
-use crate::{rpc::lsp::buffer_operations::BufferOperation, MainErr, MainResult};
+use crate::{
+    knowledge::parsing::comments::ParsedComment,
+    rpc::lsp::buffer_operations::{BufferOpChannelSender, BufferOperation},
+    server::ServerState,
+    MainErr, MainResult,
+};
 use lsp_server::RequestId;
 use lsp_types::{
     Diagnostic, DiagnosticSeverity, HoverContents, MessageType, Range, ShowMessageParams,
@@ -15,7 +19,7 @@ use tracing::warn;
 pub struct DBInteractExArgs<'i, 'g> {
     range: Range,
     // if present, database is present
-    state_guard: Option<&'i mut RwLockWriteGuard<'g, LspState<'static>>>,
+    state_guard: Option<&'i mut RwLockWriteGuard<'g, ServerState>>,
     typ: DBInteractTyp,
 }
 
@@ -61,7 +65,7 @@ impl<'i, 'g> LspMessageInteract<'i, 'g, DBInteractExArgs<'i, 'g>> for DBInteract
         &self,
         args: DBInteractExArgs<'i, 'g>,
         noti: impl Into<super::InteractLspNotification>,
-        sender: &mut crate::server::buffer_operations::BufferOpChannelSender,
+        sender: &mut BufferOpChannelSender,
     ) -> MainResult<()> {
         Ok(())
     }
@@ -71,18 +75,17 @@ impl<'i, 'g> LspMessageInteract<'i, 'g, DBInteractExArgs<'i, 'g>> for DBInteract
         args: DBInteractExArgs<'i, 'g>,
         rq_id: RequestId,
         params: impl Into<super::InteractLspRequest>,
-        sender: &mut crate::server::buffer_operations::BufferOpChannelSender,
+        sender: &mut BufferOpChannelSender,
     ) -> MainResult<()> {
         match Into::<InteractLspRequest>::into(params) {
             InteractLspRequest::Hover(_hover) => {
                 let content = match args.typ {
-                    DBInteractTyp::Status => {
-                        match args.state_guard.and_then(|w| w.database.as_ref()) {
-                            None => "No Database Connected".to_string(),
-                            Some(db) => {
-                                let config = db.config();
-                                format!(
-                                    r#"
+                    DBInteractTyp::Status => match args.state_guard.and_then(|w| w.db.as_ref()) {
+                        None => "No Database Connected".to_string(),
+                        Some(db) => {
+                            let config = db.config();
+                            format!(
+                                r#"
 ----- Database Status -----
 namespace: {}
 database: {}
@@ -90,15 +93,14 @@ user: {}
 pass: {}
 port: {}
 ---------------------------"#,
-                                    config.namespace,
-                                    config.database,
-                                    config.user,
-                                    config.pass,
-                                    config.port,
-                                )
-                            }
+                                config.namespace,
+                                config.database,
+                                config.user,
+                                config.pass,
+                                config.port,
+                            )
                         }
-                    }
+                    },
                 };
 
                 let contents = HoverContents::Scalar(lsp_types::MarkedString::String(content));
@@ -132,7 +134,7 @@ port: {}
     fn get_execution_args(
         &self,
         w: &'i mut ServerStateWriteGuard<'g>,
-        interact_comment: &'i ParsedComment<'_>,
+        interact_comment: &'i ParsedComment,
         doc_info: InteractDocumentInfo<'i>,
         args: &Vec<InteractArg>,
     ) -> Option<DBInteractExArgs<'i, 'g>> {

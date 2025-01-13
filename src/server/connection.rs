@@ -30,14 +30,14 @@ pub(super) struct ConnectionThreadState<'c> {
     read: ReadHalf<'c>,
     write: WriteHalf<'c>,
     agents: Agents,
-    knowledge: HashMap<surrealdb::sql::Id, Knowledge<'c>>,
-    server_state: Arc<RwLock<ServerState<'static>>>,
+    knowledge: HashMap<surrealdb::sql::Id, Knowledge>,
+    server_state: Arc<RwLock<ServerState>>,
 }
 
 impl<'c> ConnectionThreadState<'c> {
     const THREAD_IDLE_TIMEOUT: Duration = Duration::from_secs(10);
 
-    fn new(stream: &'c mut TcpStream, server_state: Arc<RwLock<ServerState<'static>>>) -> Self {
+    fn new(stream: &'c mut TcpStream, server_state: Arc<RwLock<ServerState>>) -> Self {
         let (read, write) = stream.split();
         Self {
             read,
@@ -50,7 +50,7 @@ impl<'c> ConnectionThreadState<'c> {
 
     pub(super) fn spawn_handle(
         mut stream: TcpStream,
-        server_state: Arc<RwLock<ServerState<'static>>>,
+        server_state: Arc<RwLock<ServerState>>,
     ) -> JoinHandle<()> {
         tokio::spawn(async move {
             tracing::warn!("spawned connection handle");
@@ -139,6 +139,8 @@ impl<'c> ConnectionThreadState<'c> {
         Ok(Option::<Response>::None)
     }
 
+    // perhaps later should pass more than just innermost state to these functions, but for now
+    // this is fine
     pub async fn handle_lsp_message(
         &mut self,
         message: lsp_server::Message,
