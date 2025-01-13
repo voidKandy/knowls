@@ -1,10 +1,12 @@
-use seraphic::RpcRequest;
+use crate::{
+    other_err,
+    rpc::messages::{Request, RpcMessage, RpcPacket},
+    MainResult,
+};
 use tokio::{
     io::AsyncWriteExt,
     net::{TcpStream, ToSocketAddrs},
 };
-
-use crate::{other_err, rpc::TcpPacket, MainResult};
 
 #[derive(Debug)]
 pub struct Client {
@@ -18,13 +20,13 @@ impl Client {
         Ok(Self { stream })
     }
 
-    pub async fn send(&mut self, r: impl RpcRequest, id: &str) -> MainResult<()> {
-        let req: seraphic::socket::Request = r.into_rpc_request(id)?;
-        tracing::warn!("client sending: {req:#?}");
-        let packet = TcpPacket::serialize(req);
+    pub async fn send(&mut self, req: Request, id: &str) -> MainResult<()> {
+        let msg = RpcMessage::Req {
+            id: id.to_string(),
+            req,
+        };
 
-        self.stream
-            .write(&packet)
+        RpcPacket::async_write(&mut self.stream, &msg)
             .await
             .map_err(|e| other_err!("problem writing to stream on clientside: {e:#?}"))?;
 

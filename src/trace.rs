@@ -46,6 +46,7 @@ pub static CLI_TRACING: LazyLock<()> = LazyLock::new(|| {
 
     let log_file = File::options()
         .create(true)
+        // dangerous!
         .append(true)
         .open(LazyLock::force(&CLI_TRACING_LOG_FILE))
         .expect("Log file could not be created/referenced");

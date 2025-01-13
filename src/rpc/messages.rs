@@ -1,39 +1,48 @@
-use seraphic::{RpcNamespace, RpcRequest, RpcRequestWrapper};
+use seraphic::{
+    derive::{RequestWrapper, ResponseWrapper, RpcNamespace, RpcRequest},
+    packet::TcpPacket,
+    ResponseWrapper, RpcNamespace, RpcRequest, RpcResponse,
+};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+pub type RpcPacket = TcpPacket<RpcMessage>;
+pub type RpcMessage = seraphic::Message<Request, Response>;
+seraphic::derive::wrapper!(RequestWrapper, Request, [LspRelayRequest]);
+seraphic::derive::wrapper!(ResponseWrapper, Response, [LspRelayResponse]);
 
 #[derive(RpcNamespace, PartialEq, Copy, Clone)]
 pub enum Namespace {
-    Relay,
+    Lsp,
     Agents,
     Documents,
 }
 
-#[derive(Debug, RpcRequestWrapper)]
-pub enum ServerRPCWrapper {
-    Relay(ServerRelayRequest),
+#[derive(RpcRequest, Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[rpc_request(namespace = "Namespace:lsp")]
+pub struct LspRelayRequest {
+    /// lsp_server::Message as JSON
+    pub payload: Value,
 }
 
-#[derive(RpcRequest, Debug, Clone, Serialize, Deserialize)]
-#[rpc_request(namespace = "Namespace:relay")]
-pub struct ServerRelayRequest {
-    pub payload: lsp_server::Message,
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LspRelayResponse {
+    /// lsp_server::Message as JSON
+    pub payload: Option<Value>,
 }
 
-impl From<lsp_server::Message> for ServerRelayRequest {
-    fn from(value: lsp_server::Message) -> Self {
-        Self { payload: value }
-    }
-}
-
-impl From<lsp_server::Message> for ServerRelayResponse {
+impl From<lsp_server::Message> for LspRelayRequest {
     fn from(value: lsp_server::Message) -> Self {
         Self {
-            payload: Some(value),
+            payload: serde_json::to_value(&value).unwrap(),
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ServerRelayResponse {
-    pub payload: Option<lsp_server::Message>,
+impl From<lsp_server::Message> for LspRelayResponse {
+    fn from(value: lsp_server::Message) -> Self {
+        Self {
+            payload: Some(serde_json::to_value(&value).unwrap()),
+        }
+    }
 }
