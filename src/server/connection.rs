@@ -1,7 +1,5 @@
 use super::ServerState;
 use crate::{
-    agents::Agents,
-    knowledge::Knowledge,
     other_err,
     rpc::{
         self,
@@ -11,7 +9,6 @@ use crate::{
     MainResult,
 };
 use std::{
-    collections::HashMap,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -29,8 +26,6 @@ use tokio::{
 pub(super) struct ConnectionThreadState<'c> {
     read: ReadHalf<'c>,
     write: WriteHalf<'c>,
-    agents: Agents,
-    knowledge: HashMap<surrealdb::sql::Id, Knowledge>,
     server_state: Arc<RwLock<ServerState>>,
 }
 
@@ -42,8 +37,6 @@ impl<'c> ConnectionThreadState<'c> {
         Self {
             read,
             write,
-            agents: Agents::new(),
-            knowledge: HashMap::new(),
             server_state,
         }
     }
