@@ -55,7 +55,14 @@ impl Server {
                 }
                 Err(e) => tracing::warn!("couldn't accept connection: {e:?}"),
             }
-            self.connections.retain(|_, v| !v.is_finished());
+            self.connections.retain(|c, v| {
+                if v.is_finished() {
+                    tracing::warn!("dropping connection to: {c:#?}");
+                    false
+                } else {
+                    true
+                }
+            });
         }
     }
 }

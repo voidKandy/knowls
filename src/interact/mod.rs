@@ -22,11 +22,19 @@ pub enum InteractWrapper {
 
 impl<'t> TryFrom<InteractParams<'t>> for InteractWrapper {
     type Error = MainErr;
+    #[tracing::instrument("try interact from params")]
     fn try_from(value: InteractParams<'t>) -> Result<Self, Self::Error> {
         match (AgentInteract::try_from(value), DBInteract::try_from(value)) {
-            (Ok(a), Err(_)) => Ok(Self::Agent(a)),
-            (Err(_), Ok(db)) => Ok(Self::DB(db)),
+            (Ok(a), Err(_)) => {
+                tracing::debug!("got agent interact: {a:#?}");
+                Ok(Self::Agent(a))
+            }
+            (Err(_), Ok(db)) => {
+                tracing::debug!("got db interact: {db:#?}");
+                Ok(Self::DB(db))
+            }
             (Err(ae), Err(dbe)) => {
+                tracing::error!("Could not get either agent or database interact from params\nAgent: {ae:#?}\nDb: {dbe:#?}");
                 Err(other_err!("Could not get either agent or database interact from params\nAgent: {ae:#?}\nDb: {dbe:#?}"))
             }
             _ => {

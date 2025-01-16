@@ -12,7 +12,7 @@ pub struct ParsedComment {
 impl ParsedComment {
     pub fn new(content: &str, range: Range) -> Self {
         Self {
-            content: content.to_string(),
+            content: content.to_string().trim().to_string(),
             range,
         }
     }

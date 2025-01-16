@@ -127,7 +127,7 @@ async fn handle_didOpen(
     Ok(())
 }
 
-#[tracing::instrument(name = "update knowledge from document")]
+#[tracing::instrument(name = "update knowledge from document", skip(w))]
 fn update_knowledge_from_doc(
     uri: Uri,
     text: String,
@@ -140,46 +140,58 @@ fn update_knowledge_from_doc(
 
     let mut interacts = HashMap::new();
 
-    if let Some(crate::knowledge::Knowledge::Document {
-        tokens: old_tokens, ..
-    }) = w.knowledge.remove(&knowledge_id)
-    {
-        let diff = Diff::get_diffs(&old_tokens, &new_tokens);
-        for d in diff.iter() {
-            let idx = match d {
-                Diff::Delete(idx) => idx,
-                Diff::Insert(idx, _) => idx,
-                Diff::Change(idx, _) => idx,
-            };
+    // if let Some(crate::knowledge::Knowledge::Document {
+    //     tokens: old_tokens, ..
+    // }) = w.knowledge.remove(&knowledge_id)
+    // {
+    // let diff = Diff::get_diffs(&old_tokens, &new_tokens);
+    // for d in diff.iter() {
+    //     let idx = match d {
+    //         Diff::Delete(idx) => idx,
+    //         Diff::Insert(idx, _) => idx,
+    //         Diff::Change(idx, _) => idx,
+    //     };
 
-            if let Some((range, interact)) = old_tokens.get(*idx).as_ref().and_then(|t| {
-                if let Token::Comment(c) = t {
-                    InteractWrapper::try_from((&old_tokens, *t, *idx))
-                        .ok()
-                        .and_then(|i| Some((c.range, i)))
-                } else {
-                    None
-                }
-            }) {
-                // let doc_info = InteractDocumentInfo {
-                //     tokens: &old_tokens,
-                //     my_pos: *idx,
-                //     uri: &uri,
-                // };
-                // match interact.variant {
-                //     InteractVar::DB(_) => {}
-                //     InteractVar::Agent(int) => {
-                //         let agent_id = interact.parsed_args.first().and_then(|arg| {
-                //             arg.as_char()
-                //                 .and_then(|ch| Some(AgentID::from((&uri, *ch))))
-                //         });
-                //         if let Some(agent) = w.agents.get_agent_mut(agent_id.unwrap()) {
-                //             AgentInteract::push_interact_diff_handle(&int, agent, d, doc_info)?;
-                //         }
-                //     }
-                // };
-                interacts.insert(range, interact);
-            }
+    // if let Some((range, interact)) = old_tokens.get(*idx).as_ref().and_then(|t| {
+    //     if let Token::Comment(c) = t {
+    //         InteractWrapper::try_from((&old_tokens, *t, *idx))
+    //             .ok()
+    //             .and_then(|i| Some((c.range, i)))
+    //     } else {
+    //         None
+    //     }
+    // }) {
+    // let doc_info = InteractDocumentInfo {
+    //     tokens: &old_tokens,
+    //     my_pos: *idx,
+    //     uri: &uri,
+    // };
+    // match interact.variant {
+    //     InteractVar::DB(_) => {}
+    //     InteractVar::Agent(int) => {
+    //         let agent_id = interact.parsed_args.first().and_then(|arg| {
+    //             arg.as_char()
+    //                 .and_then(|ch| Some(AgentID::from((&uri, *ch))))
+    //         });
+    //         if let Some(agent) = w.agents.get_agent_mut(agent_id.unwrap()) {
+    //             AgentInteract::push_interact_diff_handle(&int, agent, d, doc_info)?;
+    //         }
+    //     }
+    // };
+    // interacts.insert(range, interact);
+    // }
+    // }
+    // }
+
+    for (idx, comment_tok) in new_tokens.into_iter() {
+        tracing::debug!("comment_tok: {comment_tok:#?}");
+        if let Ok(interact) = InteractWrapper::try_from((&new_tokens, comment_tok, idx)) {
+            let range = if let Token::Comment(c) = comment_tok {
+                c.range
+            } else {
+                unreachable!()
+            };
+            interacts.insert(range, interact);
         }
     }
 

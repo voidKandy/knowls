@@ -31,7 +31,7 @@ pub(super) struct ConnectionThreadState<'c> {
 }
 
 impl<'c> ConnectionThreadState<'c> {
-    const THREAD_IDLE_TIMEOUT: Duration = Duration::from_secs(10);
+    const THREAD_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 
     fn new(stream: &'c mut TcpStream, server_state: Arc<RwLock<ServerState>>) -> Self {
         let (read, write) = stream.split();
@@ -54,79 +54,83 @@ impl<'c> ConnectionThreadState<'c> {
             let mut send_queue: Vec<RpcMessage> = vec![];
 
             loop {
-                tokio::select! {
-                    biased;
+                if let Some(Ok(_)) = if !send_queue.is_empty() {
+                    Some(thread_state.write.writable().await)
+                } else {
+                    None
+                } {
+                    while let Some(res_msg) = send_queue.pop() {
+                        tracing::warn!("server responding: {res_msg:#?}");
 
-                    Some(Ok(_)) = async {
-                            if !send_queue.is_empty() {
-                                Some(thread_state.write.writable().await)
-                            } else { None } } => {
-                        while let Some(res_msg) = send_queue.pop() {
-                            tracing::warn!("server responding: {res_msg:#?}");
+                        RpcPacket::async_write(&mut thread_state.write, &res_msg)
+                            .await
+                            .expect("failed to write rpc response  on serverside");
 
-                            RpcPacket::async_write(&mut thread_state.write, &res_msg).await
-                                .expect("failed to write rpc response  on serverside");
-
-
-                            thread_state
-                                .write
-                                .flush()
-                                .await
-                                .expect("failed to flush serverside stream");
-                        }
-                    },
-                    Ok(_) = thread_state.read.readable() => {
-                        tracing::warn!("readable");
-                        last_idle = None;
-
-                        match RpcPacket::async_read(&mut thread_state.read).await {
-                            Ok(PacketRead::Message(msg)) => {
-                                tracing::warn!("server received: {msg:#?}");
-                                match msg {
-                                    RpcMessage::Req{ id, req } =>{
-                                        if let Some(res) = thread_state.handle_rpc_request(req).await.expect("failure in handling rpc request") {
-                                            tracing::warn!("pushing to send queue: {res:#?}");
-                                           send_queue.push(RpcMessage::Res {id, res});
-                                        }
-                                    },
-                                    _ => {
-                                        tracing::warn!("no logic implemented for handling {msg:#?} on the serverside");
-                                    },
+                        thread_state
+                            .write
+                            .flush()
+                            .await
+                            .expect("failed to flush serverside stream");
+                    }
+                } else if let Ok(read) = tokio::time::timeout(
+                    Duration::from_millis(500),
+                    RpcPacket::async_read(&mut thread_state.read),
+                )
+                .await
+                {
+                    tracing::warn!("readable");
+                    last_idle = None;
+                    match read {
+                        Ok(PacketRead::Message(msg)) => {
+                            tracing::warn!("server received: {msg:#?}");
+                            match msg {
+                                RpcMessage::Req { id, req } => {
+                                    if let Some(res) = thread_state
+                                        .handle_rpc_request(req)
+                                        .await
+                                        .expect("failure in handling rpc request")
+                                    {
+                                        send_queue.push(RpcMessage::Res { id, res });
+                                    }
+                                }
+                                _ => {
+                                    tracing::warn!("no logic implemented for handling {msg:#?} on the serverside");
                                 }
                             }
-                            Ok(PacketRead::Disconnected) => {
-                                tracing::warn!("disconnected");
+                        }
+
+                        Ok(PacketRead::Disconnected) => {
+                            tracing::warn!("disconnected");
+                            break;
+                        }
+
+                        Ok(PacketRead::Empty) => {
+                            tracing::warn!("empty");
+                            tokio::time::sleep(Duration::from_millis(10)).await;
+                            continue;
+                        }
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            tracing::warn!("would block");
+                            tokio::time::sleep(Duration::from_millis(10)).await;
+                            continue;
+                        }
+
+                        Err(e) => {
+                            panic!("failed to read from rpc client on server side: {e:#?}");
+                        }
+                    }
+                } else {
+                    match last_idle {
+                        Some(instant) => {
+                            if instant.elapsed() >= ConnectionThreadState::THREAD_IDLE_TIMEOUT {
+                                tracing::warn!("thread timeout!");
                                 break;
-                            },
-                            Ok(PacketRead::Empty) => {
-                                tokio::time::sleep(Duration::from_millis(10)).await;
-                                continue;
-                            },
-                            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock
-                            => {
-                                tokio::time::sleep(Duration::from_millis(10)).await;
-                                continue;
-                            }
-                            Err(e) => {
-                                panic!("failed to read from rpc client on server side: {e:#?}");
                             }
                         }
-                    },
-
-
-                    else => {
-                        match last_idle {
-                            Some(instant) => {
-                                if instant.elapsed() >= ConnectionThreadState::THREAD_IDLE_TIMEOUT {
-                                    tracing::warn!("thread timeout!");
-                                    return;
-                                }
-                            }
-                            None => {
-                                let now = Instant::now();
-                                tracing::warn!("setting idle now: {now:#?}");
-                                last_idle = Some(now);
-                            }
+                        None => {
+                            let now = Instant::now();
+                            tracing::warn!("setting idle now: {now:#?}");
+                            last_idle = Some(now);
                         }
                     }
                 }

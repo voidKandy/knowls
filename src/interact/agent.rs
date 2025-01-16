@@ -51,7 +51,7 @@ impl<'t> TryFrom<InteractParams<'t>> for AgentInteract {
     type Error = MainErr;
     fn try_from((toks, tok, idx): InteractParams<'t>) -> Result<Self, Self::Error> {
         if let Token::Comment(parsed) = tok {
-            let mut chars = parsed.content.chars();
+            let mut chars = parsed.content.trim().chars();
 
             match chars.next().ok_or(other_err!("empty content"))? {
                 Self::PUSH => {

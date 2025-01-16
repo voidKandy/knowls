@@ -23,8 +23,12 @@ impl LspDiagnostic {
         if let Some(Knowledge::Document { interacts, .. }) =
             r.knowledge.get(&uri_to_surreal_id(&uri))
         {
+            tracing::debug!(
+                "server found knowledge for: {}\ninteracts: {interacts:#?}",
+                uri.to_string()
+            );
             for interact in interacts.values() {
-                tracing::warn!("interact: {interact:#?}");
+                tracing::debug!("interact: {interact:#?}");
                 match interact {
                     InteractWrapper::Agent(i) => {
                         let ctx = i.get_read_context(r)?;
@@ -36,6 +40,8 @@ impl LspDiagnostic {
                     }
                 }
             }
+        } else {
+            tracing::warn!("server found no document for: {}", uri.to_string());
         }
 
         if all_diagnostics.is_empty() {

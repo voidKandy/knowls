@@ -3,7 +3,6 @@ use espx_lsp_server::{
     client::Client,
     config::Config,
     rpc::messages::{LspRelayRequest, Request, Response, RpcMessage, RpcPacket},
-    server::Server,
     trace::CLI_TRACING,
     trace_panics,
 };
@@ -13,8 +12,8 @@ use lsp_types::{
     TextDocumentSyncOptions, TextDocumentSyncSaveOptions, WorkDoneProgressOptions,
 };
 use seraphic::packet::PacketRead;
-use std::{collections::VecDeque, sync::LazyLock, time::Duration};
-use tokio::{io::Interest, time::sleep};
+use std::{collections::VecDeque, sync::LazyLock};
+use tokio::io::Interest;
 
 struct RelayClient {
     lsp_send: crossbeam_channel::Sender<lsp_server::Message>,
@@ -92,33 +91,9 @@ impl RelayClient {
                 .await
                 .expect("failed to get ready state");
 
-            if ready.is_readable() {
-                match RpcPacket::async_read(&mut self.rpc_client.stream).await {
-                    Ok(PacketRead::Message(msg)) => match msg {
-                        RpcMessage::Res { res, .. } => {
-                            if let Response::Lsp(relay_response) = res {
-                                if let Some(res) = relay_response.payload {
-                                    let lsp_response: lsp_server::Message = serde_json::from_value(res).expect("failed to serialize lsp relay response as lsp_server::Message");
-                                    self.lsp_send.send(lsp_response).unwrap();
-                                }
-                            }
-                        }
-                        _ => {
-                            panic!("relay received an unexpected message: {msg:#?}");
-                        }
-                    },
-                    Ok(PacketRead::Disconnected) => {
-                        tracing::warn!("relay received disconnect from server");
-                        break;
-                    }
-                    Ok(PacketRead::Empty) => {}
-                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
-                    Err(e) => {
-                        panic!("failed to read from rpc client on client side: {e:#?}");
-                    }
-                }
-            } else if ready.is_writable() && !self.lsp_message_queue.is_empty() {
+            if ready.is_writable() && !self.lsp_message_queue.is_empty() {
                 if let Some(msg) = self.lsp_message_queue.pop_front() {
+                    tracing::warn!("relay to send: {msg:#?}");
                     let req = Request::from(LspRelayRequest::from(msg));
 
                     self.rpc_client
@@ -129,6 +104,41 @@ impl RelayClient {
                     tracing::warn!("updated id: {id}");
                 }
             }
+
+            if ready.is_readable() {
+                tracing::warn!("readable");
+                match RpcPacket::async_read(&mut self.rpc_client.stream).await {
+                    Ok(PacketRead::Message(msg)) => {
+                        tracing::warn!("received message from server: {msg:#?}");
+                        match msg {
+                            RpcMessage::Res { res, .. } => {
+                                if let Response::Lsp(relay_response) = res {
+                                    tracing::warn!("lsp msg:  {relay_response:#?}");
+                                    if let Some(res) = relay_response.payload {
+                                        let lsp_response: lsp_server::Message = serde_json::from_value(res).expect("failed to serialize lsp relay response as lsp_server::Message");
+                                        tracing::warn!(
+                                            "relay sending: {lsp_response:#?} to lsp client"
+                                        );
+                                        self.lsp_send.send(lsp_response).unwrap();
+                                    }
+                                }
+                            }
+                            _ => {
+                                panic!("relay received an unexpected message: {msg:#?}");
+                            }
+                        }
+                    }
+                    Ok(PacketRead::Disconnected) => {
+                        tracing::warn!("relay received disconnect from server");
+                        break;
+                    }
+                    Ok(PacketRead::Empty) => continue,
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
+                    Err(e) => {
+                        panic!("failed to read from rpc client on client side: {e:#?}");
+                    }
+                }
+            }
         }
     }
 }
@@ -136,7 +146,7 @@ impl RelayClient {
 #[tokio::main]
 async fn main() {
     LazyLock::force(&CLI_TRACING);
-    tracing::warn!("spinning up headless Language Server");
+    tracing::warn!("spinning up LSP Relay");
     trace_panics!();
 
     let config = Config::init_from_global_config().expect("failed to build config");

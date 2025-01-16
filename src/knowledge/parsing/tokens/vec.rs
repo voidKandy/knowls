@@ -28,15 +28,17 @@ impl ToString for TokenVec {
     }
 }
 
-/// Helper iterator through all ParsedComment vectors
+/// Helper iterator through all ParsedComment tokens
 impl<'o> IntoIterator for &'o TokenVec {
-    type Item = (usize, &'o ParsedComment);
+    type Item = (usize, &'o Token);
     type IntoIter = std::vec::IntoIter<Self::Item>;
     fn into_iter(self) -> Self::IntoIter {
         let mut comments = vec![];
         for idx in self.comment_indices.iter() {
-            if let Some(Token::Comment(c)) = self.vec.iter().nth(*idx) {
-                comments.push((*idx, c))
+            if let Some(tok) = self.vec.iter().nth(*idx) {
+                if let Token::Comment(_) = tok {
+                    comments.push((*idx, tok))
+                }
             }
         }
 
