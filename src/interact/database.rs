@@ -1,108 +1,123 @@
 use super::{
-    execution::InteractDocumentInfo,
-    logic::{InteractArg, LspMessageInteract, ServerStateWriteGuard},
-    InteractLspRequest,
+    messages::InteractLspNotification, messages::InteractLspRequest, Interact, InteractCtx,
+    InteractParams, InteractReadCtx, InteractWriteCtx, ServerStateReadGuard, ServerStateWriteGuard,
 };
 use crate::{
-    knowledge::parsing::comments::ParsedComment,
+    database::Database,
+    knowledge::parsing::tokens::Token,
+    other_err,
     rpc::lsp::buffer_operations::{BufferOpChannelSender, BufferOperation},
-    server::ServerState,
     MainErr, MainResult,
 };
 use lsp_server::RequestId;
-use lsp_types::{
-    Diagnostic, DiagnosticSeverity, HoverContents, MessageType, Range, ShowMessageParams,
-};
-use tokio::sync::RwLockWriteGuard;
-use tracing::warn;
+use lsp_types::{DiagnosticSeverity, HoverContents, Range};
 
-pub struct DBInteractExArgs<'i, 'g> {
-    range: Range,
-    // if present, database is present
-    state_guard: Option<&'i mut RwLockWriteGuard<'g, ServerState>>,
-    typ: DBInteractTyp,
-}
-
-enum DBInteractTyp {
+#[derive(Debug, Clone)]
+pub enum DBInteractVar {
     Status,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct DBInteract;
+#[derive(Debug)]
+pub struct DBReadCtx<'i> {
+    db: Option<&'i Database>,
+}
+impl<'i> InteractReadCtx<'i> for DBReadCtx<'i> {}
 
-impl DBInteract {
-    const DATABASE: char = '%';
+#[derive(Debug)]
+pub struct DBWriteCtx<'i> {
+    db: Option<&'i mut Database>,
+}
+impl<'i> InteractWriteCtx<'i> for DBWriteCtx<'i> {}
+
+#[derive(Debug, Clone)]
+pub struct DBInteract {
+    range: Range,
+    var: DBInteractVar,
 }
 
-impl TryFrom<char> for DBInteract {
+impl DBInteract {
+    const TRIGGER: char = '%';
+}
+
+impl<'t> TryFrom<InteractParams<'t>> for DBInteract {
     type Error = MainErr;
-    fn try_from(value: char) -> Result<Self, Self::Error> {
-        match value {
-            Self::DATABASE => Ok(Self),
-            _ => Err(std::io::Error::other(format!(
-                "could not create agent interact from {value}"
-            ))
-            .into()),
+    fn try_from((toks, tok, idx): InteractParams<'t>) -> Result<Self, Self::Error> {
+        if let Token::Comment(parsed) = tok {
+            let mut chars = parsed.content.chars();
+
+            match chars.next().ok_or(other_err!("empty content"))? {
+                Self::TRIGGER => {
+                    return Ok(Self {
+                        range: parsed.range,
+                        var: DBInteractVar::Status,
+                    });
+                }
+                c => return Err(other_err!("{c} is not valid for an database interact")),
+            }
+        } else {
+            return Err(other_err!("Wrong token Variant"));
         }
     }
 }
 
-impl<'i, 'g> LspMessageInteract<'i, 'g, DBInteractExArgs<'i, 'g>> for DBInteract {
-    fn diagnostics(&self, args: DBInteractExArgs<'i, 'g>) -> Vec<Diagnostic> {
-        let severity = Some(DiagnosticSeverity::HINT);
-        let str = match args.typ {
-            DBInteractTyp::Status => "Status",
-        };
-        vec![Diagnostic {
-            range: args.range,
-            severity,
-            message: format!("{str}"),
-            ..Default::default()
-        }]
-    }
+impl<'i> Interact<'i> for DBInteract {
+    type ReadContext = DBReadCtx<'i>;
+    type WriteContext = DBWriteCtx<'i>;
 
-    async fn execute_notification(
+    async fn handle_noti(
         &self,
-        args: DBInteractExArgs<'i, 'g>,
-        noti: impl Into<super::InteractLspNotification>,
-        sender: &mut BufferOpChannelSender,
+        noti: impl Into<InteractLspNotification>,
+        _ctx: &InteractCtx<'i, Self>,
+        _sender: &mut BufferOpChannelSender,
     ) -> MainResult<()> {
+        match Into::<InteractLspNotification>::into(noti) {
+            InteractLspNotification::Save(_save) => {}
+            InteractLspNotification::Change(_change) => {}
+            InteractLspNotification::Open(_open) => {}
+        }
         Ok(())
     }
 
-    async fn execute_request(
+    async fn handle_req(
         &self,
-        args: DBInteractExArgs<'i, 'g>,
+        req: impl Into<InteractLspRequest>,
         rq_id: RequestId,
-        params: impl Into<super::InteractLspRequest>,
+        ctx: &InteractCtx<'i, Self>,
         sender: &mut BufferOpChannelSender,
     ) -> MainResult<()> {
-        match Into::<InteractLspRequest>::into(params) {
+        match Into::<InteractLspRequest>::into(req) {
             InteractLspRequest::Hover(_hover) => {
-                let content = match args.typ {
-                    DBInteractTyp::Status => match args.state_guard.and_then(|w| w.db.as_ref()) {
-                        None => "No Database Connected".to_string(),
-                        Some(db) => {
-                            let config = db.config();
-                            format!(
-                                r#"
------ Database Status -----
-namespace: {}
-database: {}
-user: {}
-pass: {}
-port: {}
----------------------------"#,
-                                config.namespace,
-                                config.database,
-                                config.user,
-                                config.pass,
-                                config.port,
-                            )
+                let content = match self.var {
+                    DBInteractVar::Status => {
+                        match match ctx {
+                            InteractCtx::Read(r) => {
+                                r.db.as_ref().and_then(|db| Some(db.config().clone()))
+                            }
+                            InteractCtx::Write(w) => {
+                                w.db.as_ref().and_then(|db| Some(db.config().clone()))
+                            }
+                        } {
+                            None => "No Database Connected".to_string(),
+                            Some(db_config) => {
+                                format!(
+                                    r#"
+                    ----- Database Status -----
+                    namespace: {}
+                    database: {}
+                    user: {}
+                    pass: {}
+                    port: {}
+                    ---------------------------"#,
+                                    db_config.namespace,
+                                    db_config.database,
+                                    db_config.user,
+                                    db_config.pass,
+                                    db_config.port,
+                                )
+                            }
                         }
-                    },
+                    }
                 };
-
                 let contents = HoverContents::Scalar(lsp_types::MarkedString::String(content));
                 sender
                     .send_operation(BufferOperation::HoverResponse {
@@ -111,65 +126,37 @@ port: {}
                     })
                     .await?;
             }
-
-            InteractLspRequest::GotoDef(_goto) => {
-                warn!("activating gotodef for database interact");
-                match args.typ {
-                    DBInteractTyp::Status => {
-                        let message = ShowMessageParams {
-                            typ: MessageType::INFO,
-                            message: format!("Status command has no GOTO function"),
-                        };
-
-                        sender.send_operation(message.into()).await?;
-                    }
-                }
-            }
-            _ => {}
-        }
+            InteractLspRequest::GotoDef(_goto) => {}
+            InteractLspRequest::Diagnostic(_diag) => {}
+        };
         Ok(())
     }
 
-    #[tracing::instrument("get ex args", skip(w))]
-    fn get_execution_args(
+    fn diagnostics(&self, _wctx: Self::ReadContext) -> Vec<lsp_types::Diagnostic> {
+        let mut all_diagnostics = vec![];
+        let severity = Some(DiagnosticSeverity::HINT);
+        let message = match self.var {
+            DBInteractVar::Status => "Database Status",
+        }
+        .to_string();
+        all_diagnostics.push(lsp_types::Diagnostic {
+            range: self.range,
+            severity,
+            message,
+            ..Default::default()
+        });
+
+        all_diagnostics
+    }
+
+    fn get_read_context(&self, r: &'i ServerStateReadGuard) -> MainResult<Self::ReadContext> {
+        Ok(DBReadCtx { db: r.db.as_ref() })
+    }
+
+    fn get_write_context(
         &self,
-        w: &'i mut ServerStateWriteGuard<'g>,
-        interact_comment: &'i ParsedComment,
-        doc_info: InteractDocumentInfo<'i>,
-        args: &Vec<InteractArg>,
-    ) -> Option<DBInteractExArgs<'i, 'g>> {
-        warn!("args: {args:?}");
-
-        let state_guard = if w.db.as_ref().is_some() {
-            Some(w)
-        } else {
-            None
-        };
-
-        let command_char = args[0]
-            .as_char()
-            .and_then(|c| Some(c.to_ascii_lowercase()))
-            .or_else(|| {
-                tracing::error!(
-                    "expected to get a char as first argument, instead got: {:#?}",
-                    args[0]
-                );
-                None
-            })?;
-
-        let typ = match command_char {
-            's' | _ => {
-                if command_char != 's' {
-                    warn!("unrecognized command char: {command_char}. Defaulting to 'status' behavior");
-                }
-                DBInteractTyp::Status
-            }
-        };
-
-        Some(DBInteractExArgs {
-            state_guard,
-            typ,
-            range: interact_comment.range,
-        })
+        w: &'i mut ServerStateWriteGuard,
+    ) -> MainResult<Self::WriteContext> {
+        Ok(DBWriteCtx { db: w.db.as_mut() })
     }
 }

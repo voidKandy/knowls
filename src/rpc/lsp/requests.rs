@@ -1,8 +1,19 @@
+use std::cmp::Ordering;
+
 use super::{
     buffer_operations::{BufferOpChannelHandler, BufferOpChannelSender},
     show_request_err, BufferOpChannelJoinHandle,
 };
-use crate::{other_err, server::SharedState, MainResult};
+use crate::{
+    interact::{Interact, InteractCtx, InteractWrapper},
+    knowledge::{
+        parsing::{cmp_pos_range, ranges_overlap},
+        uri_to_surreal_id, Knowledge,
+    },
+    other_err,
+    server::SharedState,
+    MainResult,
+};
 use lsp_server::Request;
 use lsp_types::{DocumentDiagnosticParams, GotoDefinitionParams, HoverParams};
 use tracing::{debug, warn};
@@ -50,6 +61,7 @@ pub async fn handle_goto_definition(
     state: SharedState<'static>,
     mut sender: BufferOpChannelSender,
 ) -> MainResult<()> {
+    let req_id = req.id.clone();
     let params = serde_json::from_value::<GotoDefinitionParams>(req.params)?;
 
     let uri = params
@@ -61,13 +73,44 @@ pub async fn handle_goto_definition(
 
     warn!("Gotodef Position: {position:?}");
 
-    // let mut w = state.0.try_write()?;
-    //
-    // let doc_tokens = w
-    //     .documents
-    //     .get(&uri)
-    //     .ok_or(crate::other_err!("document not present: {uri:#?}"))?
-    //     .clone();
+    let mut w = state.try_write()?;
+    let taken_knowledge = w
+        .knowledge
+        .remove(&uri_to_surreal_id(&uri))
+        .ok_or(crate::other_err!("document not present: {uri:#?}"))?;
+
+    #[allow(irrefutable_let_patterns)]
+    if let Knowledge::Document { ref interacts, .. } = taken_knowledge {
+        for (range, interact) in interacts {
+            if matches!(cmp_pos_range(&range, &position), Ordering::Equal) {
+                match interact {
+                    InteractWrapper::Agent(i) => {
+                        let ctx = i.get_write_context(&mut w)?;
+                        i.handle_req(
+                            params.clone(),
+                            req_id.clone(),
+                            &InteractCtx::from_write(ctx),
+                            &mut sender,
+                        )
+                        .await?;
+                    }
+                    InteractWrapper::DB(i) => {
+                        let ctx = i.get_write_context(&mut w)?;
+                        i.handle_req(
+                            params.clone(),
+                            req_id.clone(),
+                            &InteractCtx::from_write(ctx),
+                            &mut sender,
+                        )
+                        .await?;
+                    }
+                }
+            }
+        }
+    }
+
+    w.knowledge.insert(uri_to_surreal_id(&uri), taken_knowledge);
+
     //
     // let (comment, idx) = match doc_tokens.comment_in_position(&position) {
     //     Some((com, i)) => (com.clone(), i),
@@ -101,6 +144,7 @@ pub async fn handle_hover(
     state: SharedState<'static>,
     mut sender: BufferOpChannelSender,
 ) -> MainResult<()> {
+    let rq_id = req.id.clone();
     let params = serde_json::from_value::<HoverParams>(req.params)?;
     let uri = params
         .text_document_position_params
@@ -109,20 +153,48 @@ pub async fn handle_hover(
         .clone();
     let position = params.text_document_position_params.position;
 
-    // let mut w = state.0.try_write().expect("failed to get write guard");
-    //
-    // let doc_tokens = w
-    //     .documents
-    //     .get(&uri)
-    //     .ok_or(crate::other_err!("document not present: {uri:#?}"))?
-    //     .clone();
-    // let (comment, idx) = match doc_tokens.comment_in_position(&position) {
-    //     Some((com, i)) => (com.clone(), i),
-    //     None => {
-    //         warn!("tried to activate hover where there was no comment");
-    //         return Ok(());
-    //     }
-    // };
+    let mut r = state.try_read()?;
+
+    #[allow(irrefutable_let_patterns)]
+    if let Knowledge::Document { tokens, interacts } = r
+        .knowledge
+        .get(&uri_to_surreal_id(&uri))
+        .ok_or(crate::other_err!("document not present: {uri:#?}"))?
+    {
+        for (range, interact) in interacts {
+            if matches!(cmp_pos_range(&range, &position), Ordering::Equal) {
+                match interact {
+                    InteractWrapper::Agent(i) => {
+                        let ctx = i.get_read_context(&r)?;
+                        i.handle_req(
+                            params.clone(),
+                            rq_id.clone(),
+                            &InteractCtx::from_read(ctx),
+                            &mut sender,
+                        )
+                        .await?;
+                    }
+                    InteractWrapper::DB(i) => {
+                        let ctx = i.get_read_context(&r)?;
+                        i.handle_req(
+                            params.clone(),
+                            rq_id.clone(),
+                            &InteractCtx::from_read(ctx),
+                            &mut sender,
+                        )
+                        .await?;
+                    }
+                }
+            }
+        }
+        let (comment, idx) = match tokens.comment_in_position(&position) {
+            Some((com, i)) => (com, i),
+            None => {
+                warn!("tried to activate hover where there was no comment");
+                return Ok(());
+            }
+        };
+    }
     //
     // let request = Into::<InteractLspRequest>::into(params);
     //

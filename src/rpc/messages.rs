@@ -8,15 +8,32 @@ use serde_json::Value;
 
 pub type RpcPacket = TcpPacket<RpcMessage>;
 pub type RpcMessage = seraphic::Message<Request, Response>;
-seraphic::derive::wrapper!(RequestWrapper, Request, [LspRelayRequest]);
-seraphic::derive::wrapper!(ResponseWrapper, Response, [LspRelayResponse]);
+
+#[derive(Debug, Clone, ResponseWrapper, PartialEq)]
+pub enum Response {
+    Lsp(LspRelayResponse),
+    Health(HealthResponse),
+}
+#[derive(Debug, Clone, RequestWrapper, PartialEq)]
+pub enum Request {
+    Lsp(LspRelayRequest),
+    Health(HealthRequest),
+}
 
 #[derive(RpcNamespace, PartialEq, Copy, Clone)]
 pub enum Namespace {
+    Health,
     Lsp,
     Agents,
     Documents,
 }
+
+#[derive(RpcRequest, Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[rpc_request(namespace = "Namespace:health")]
+pub struct HealthRequest {}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct HealthResponse {}
 
 #[derive(RpcRequest, Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[rpc_request(namespace = "Namespace:lsp")]

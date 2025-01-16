@@ -1,4 +1,4 @@
-use super::{logic::LspMessageInteract, Interact, InteractLspMessage, InteractVar};
+use super::{messages::InteractLspMessage, Interact, InteractWrapper};
 use crate::{
     knowledge::parsing::{comments::ParsedComment, tokens::vec::TokenVec},
     other_err,
@@ -24,7 +24,7 @@ impl ParsedComment {
         message: impl Into<InteractLspMessage>,
         doc_info: InteractDocumentInfo<'i>,
     ) -> MainResult<()> {
-        if let Some(interact) = Interact::try_from_str(&self.content) {
+        if let Some(interact) = InteractWrapper::try_from_str(&self.content) {
             let message = Into::<InteractLspMessage>::into(message);
 
             // let report = format!(

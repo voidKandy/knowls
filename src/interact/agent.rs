@@ -1,265 +1,131 @@
-use super::{
-    execution::InteractDocumentInfo,
-    logic::{
-        InteractArg, InteractLspNotification, InteractLspRequest, InteractVar, LspMessageInteract,
-        ServerStateWriteGuard,
-    },
-    // parsing::{
-    //     comments::ParsedComment,
-    //     language_ext_from_uri,
-    //     lexer::Lexer,
-    //     tokens::{vec::TokenVec, Token},
-    // },
-    Interact,
-};
+use espionox::agents::Agent;
+use lsp_server::RequestId;
+use lsp_types::{DiagnosticSeverity, HoverContents, Range};
+
 use crate::{
-    agents::{message_stack_into_marked_string, AgentID, Agents},
-    knowledge::{
-        parsing::{
-            comments::ParsedComment,
-            tokens::{vec::TokenVec, Token},
-        },
-        uri_to_surreal_id, Knowledge,
-    },
+    agents::{message_stack_into_marked_string, AgentID},
+    knowledge::parsing::tokens::Token,
     other_err,
     rpc::lsp::buffer_operations::{BufferOpChannelSender, BufferOperation},
-    util::Diff,
     MainErr, MainResult,
 };
-use espionox::{
-    agents::{memory::OtherRoleTo, Agent},
-    language_models::completions::streaming::CompletionStreamStatus,
-    prelude::{Message, MessageRole},
-};
-use lsp_server::RequestId;
-use lsp_types::{
-    ApplyWorkspaceEditParams, Diagnostic, DiagnosticSeverity, HoverContents, MessageType, Range,
-    ShowMessageParams, TextEdit, Uri, WorkspaceEdit,
-};
-use std::collections::HashMap;
-use tracing::warn;
 
-pub(crate) struct AgentInteractExArgs<'i> {
-    user_input: AgentInteractUserInput,
-    lsp_state: AgentInteractLspState<'i>,
+use super::{
+    messages::InteractLspNotification, messages::InteractLspRequest, Interact, InteractCtx,
+    InteractParams, InteractReadCtx, InteractWriteCtx, ServerStateReadGuard, ServerStateWriteGuard,
+};
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AgentInteractVar {
+    // the string value to lock into agent's context
+    Push(Option<String>),
+    // user's prompt
+    Prompt(Option<String>),
 }
 
-pub(crate) struct AgentInteractLspState<'i> {
+#[derive(Debug)]
+pub struct AgentReadCtx<'i> {
+    agent: &'i Agent,
+}
+impl<'i> InteractReadCtx<'i> for AgentReadCtx<'i> {}
+
+#[derive(Debug)]
+pub struct AgentWriteCtx<'i> {
     agent: &'i mut Agent,
-    document_state: TokenVec,
-    uri: &'i Uri,
 }
+impl<'i> InteractWriteCtx<'i> for AgentWriteCtx<'i> {}
 
-pub(super) struct AgentInteractUserInput {
-    content: String,
+#[derive(Debug, Clone, PartialEq)]
+pub struct AgentInteract {
     range: Range,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum AgentInteract {
-    Push,
-    Prompt,
-    RagPrompt,
+    agent_id: AgentID,
+    var: AgentInteractVar,
 }
 
 impl AgentInteract {
     const PUSH: char = '+';
     const PROMPT: char = '@';
-    const RAG_PROMPT: char = '$';
 }
 
-impl TryFrom<char> for AgentInteract {
+impl<'t> TryFrom<InteractParams<'t>> for AgentInteract {
     type Error = MainErr;
-    fn try_from(value: char) -> Result<Self, Self::Error> {
-        match value {
-            Self::PUSH => Ok(Self::Push),
-            Self::PROMPT => Ok(Self::Prompt),
-            Self::RAG_PROMPT => Ok(Self::RagPrompt),
-            _ => Err(std::io::Error::other(format!(
-                "could not create agent interact from {value}"
-            ))
-            .into()),
+    fn try_from((toks, tok, idx): InteractParams<'t>) -> Result<Self, Self::Error> {
+        if let Token::Comment(parsed) = tok {
+            let mut chars = parsed.content.chars();
+
+            match chars.next().ok_or(other_err!("empty content"))? {
+                Self::PUSH => {
+                    let agent_id_char = chars.next().expect("no agent id");
+                    let agent_id = AgentID::try_from_char(agent_id_char)
+                        .ok_or(other_err!("{agent_id_char} is not a valid agent id"))?;
+
+                    let block = match toks.get(idx + 1) {
+                        Some(Token::Block(block)) => Some(block.to_string()),
+                        _ => None,
+                    };
+                    return Ok(Self {
+                        range: parsed.range,
+                        agent_id,
+                        var: AgentInteractVar::Push(block),
+                    });
+                }
+                Self::PROMPT => {
+                    let agent_id_char = chars.next().expect("no agent id");
+                    let agent_id = AgentID::try_from_char(agent_id_char)
+                        .ok_or(other_err!("{agent_id_char} is not a valid agent id"))?;
+                    let prompt = chars.collect::<String>().trim().to_string();
+                    let prompt = if prompt.is_empty() {
+                        None
+                    } else {
+                        Some(prompt)
+                    };
+
+                    return Ok(Self {
+                        range: parsed.range,
+                        agent_id,
+                        var: AgentInteractVar::Prompt(prompt),
+                    });
+                }
+                c => return Err(other_err!("{c} is not valid for an agent interact")),
+            }
+        } else {
+            return Err(other_err!("Wrong token Variant"));
         }
     }
 }
 
-pub fn push_interact_role(uri: &Uri, token_idx: usize) -> MessageRole {
-    MessageRole::Other {
-        alias: format!("{}:{token_idx}", uri.to_string()),
-        coerce_to: OtherRoleTo::User,
-    }
-}
+impl<'i> Interact<'i> for AgentInteract {
+    type ReadContext = AgentReadCtx<'i>;
+    type WriteContext = AgentWriteCtx<'i>;
 
-impl AgentInteract {
-    pub fn push_interact_diff_handle<'i>(
+    async fn handle_noti(
         &self,
-        agent: &mut Agent,
-        diff: &Diff<Token>,
-        info: InteractDocumentInfo<'i>,
+        noti: impl Into<InteractLspNotification>,
+        _ctx: &InteractCtx<'i, Self>,
+        _sender: &mut BufferOpChannelSender,
     ) -> MainResult<()> {
-        match self {
-            Self::Push => {
-                match diff {
-                    Diff::Insert(i, _) => {
-                        let role = push_interact_role(info.uri, *i);
-                        if let Some(Token::Block(next_block)) = info.tokens.get(i + 1) {
-                            agent.cache.push(Message {
-                                role: role.clone(),
-                                content: next_block.to_string(),
-                            });
-                        }
-                    }
-
-                    d @ Diff::Change(i, _) | d @ Diff::Delete(i) => {
-                        let mut should_delete = true;
-
-                        if let Diff::Change(_, t) = d {
-                            if let Token::Comment(ParsedComment { content, .. }) = t {
-                                if let Some(interact) = Interact::try_from_str(&content) {
-                                    if interact.variant == InteractVar::Agent(*self) {
-                                        warn!("Some trivial change must have occurred, will not delete");
-                                        should_delete = false;
-                                    }
-                                }
-                            }
-                        }
-
-                        if should_delete {
-                            let role = push_interact_role(info.uri, *i);
-                            agent.cache.mut_filter_by(&role, false);
-                        }
-                    }
-                }
-            }
-            _ => {}
+        match Into::<InteractLspNotification>::into(noti) {
+            InteractLspNotification::Save(_save) => {}
+            InteractLspNotification::Change(_change) => {}
+            InteractLspNotification::Open(_open) => {}
         }
         Ok(())
     }
-}
 
-impl<'i, 'g> LspMessageInteract<'i, 'g, AgentInteractExArgs<'i>> for AgentInteract {
-    fn diagnostics(&self, args: AgentInteractExArgs<'i>) -> Vec<Diagnostic> {
-        let mut all_diagnostics = vec![];
-        let severity = Some(DiagnosticSeverity::HINT);
-        let str = match self {
-            Self::Push => "PUSH",
-            Self::Prompt => "PROMPT",
-            Self::RagPrompt => "RAG_PROMPT",
-        };
-        all_diagnostics.push(Diagnostic {
-            range: args.user_input.range,
-            severity,
-            message: format!("{str}"),
-            ..Default::default()
-        });
-
-        all_diagnostics
-    }
-
-    async fn execute_request(
+    async fn handle_req(
         &self,
-        args: AgentInteractExArgs<'i>,
+        req: impl Into<InteractLspRequest>,
         rq_id: RequestId,
-        params: impl Into<InteractLspRequest>,
+        ctx: &InteractCtx<'i, Self>,
         sender: &mut BufferOpChannelSender,
     ) -> MainResult<()> {
-        match Into::<InteractLspRequest>::into(params) {
-            InteractLspRequest::GotoDef(goto) => {
-                let uri = goto.text_document_position_params.text_document.uri;
-
-                match self {
-                    Self::Push => {
-                        let message = ShowMessageParams {
-                            typ: MessageType::INFO,
-                            message: format!("Push command has no GOTO function"),
-                        };
-
-                        sender.send_operation(message.into()).await?;
-                    }
-                    Self::Prompt => {
-                        if args.user_input.content.trim().is_empty() {
-                            sender
-                                .send_work_done_report(Some("No messages to send"), None)
-                                .await?;
-
-                            return Ok(());
-                        }
-
-                        let mut changes = HashMap::new();
-                        let mut change_range = args.user_input.range;
-                        change_range.start.character += 2;
-
-                        changes.insert(
-                            uri.clone(),
-                            vec![TextEdit {
-                                range: change_range,
-                                new_text: String::new(),
-                            }],
-                        );
-
-                        let edit_params = ApplyWorkspaceEditParams {
-                            label: None,
-                            edit: WorkspaceEdit {
-                                changes: Some(changes),
-                                ..Default::default()
-                            },
-                        };
-
-                        sender.send_operation(edit_params.into()).await?;
-
-                        let message = Message::new_user(&args.user_input.content);
-                        args.lsp_state.agent.cache.push(message);
-
-                        let mut stream_handler = args.lsp_state.agent.stream_completion().await?;
-
-                        sender
-                            .send_work_done_report(
-                                Some("Started Receiving Streamed Completion"),
-                                None,
-                            )
-                            .await?;
-
-                        let mut whole_message = String::new();
-                        loop {
-                            match stream_handler.receive(Some(args.lsp_state.agent)).await {
-                                Ok(status) => {
-                                    warn!("STATUS: {status:?}");
-                                    match status {
-                                        Some(CompletionStreamStatus::Working(token)) => {
-                                            warn!("got completion token: {}", token);
-                                            whole_message.push_str(&token);
-                                            sender
-                                                .send_work_done_report(Some(&token), None)
-                                                .await?;
-                                        }
-                                        Some(CompletionStreamStatus::Finished) => {
-                                            warn!("finished");
-                                            break;
-                                        }
-                                        None => break,
-                                    }
-                                }
-                                Err(err) => return Err(other_err!("{err:#?}")),
-                            }
-                        }
-                        sender.send_work_done_end(Some("Finished")).await?;
-
-                        if !whole_message.trim().is_empty() {
-                            warn!("whole message: {whole_message}");
-
-                            let message = ShowMessageParams {
-                                typ: MessageType::INFO,
-                                message: whole_message.clone(),
-                            };
-
-                            sender.send_operation(message.into()).await?;
-                        }
-                    }
-                    Self::RagPrompt => {}
-                }
-            }
+        match Into::<InteractLspRequest>::into(req) {
             InteractLspRequest::Hover(_hover) => {
-                let stack = Agents::get_last_n_messages(&args.lsp_state.agent, 5);
+                let messages: Vec<&espionox::prelude::Message> = match ctx {
+                    InteractCtx::Read(r) => r.agent.cache.as_ref().iter().rev().take(5).collect(),
+                    InteractCtx::Write(w) => w.agent.cache.as_ref().iter().rev().take(5).collect(),
+                };
+                let stack = espionox::agents::memory::MessageStackRef::from(messages);
                 let contents = HoverContents::Scalar(message_stack_into_marked_string(stack));
                 sender
                     .send_operation(BufferOperation::HoverResponse {
@@ -268,135 +134,84 @@ impl<'i, 'g> LspMessageInteract<'i, 'g, AgentInteractExArgs<'i>> for AgentIntera
                     })
                     .await?;
             }
-            InteractLspRequest::Diagnostic(diag) => {}
-        }
+            InteractLspRequest::GotoDef(_goto) => {}
+            InteractLspRequest::Diagnostic(_diag) => {}
+        };
         Ok(())
     }
 
-    async fn execute_notification(
-        &self,
-        args: AgentInteractExArgs<'i>,
-        noti: impl Into<InteractLspNotification>,
-        sender: &mut BufferOpChannelSender,
-    ) -> MainResult<()> {
-        match Into::<InteractLspNotification>::into(noti) {
-            InteractLspNotification::Save(did_save) => {
-                match self {
-                    //
-                    // Self::Push => {
-                    //     args.lsp_state.agent.cache.push(Message {
-                    //         role: push_interact_role(&did_save.text_document.uri),
-                    //         content: args.user_input.content,
-                    //     });
-                    // }
-                    _ => {}
-                }
-            }
-            InteractLspNotification::Change(did_change) => {
-                if let Some(change) = did_change.content_changes.first() {}
-            }
-            InteractLspNotification::Open(did_open) => {}
+    fn diagnostics(&self, _wctx: Self::ReadContext) -> Vec<lsp_types::Diagnostic> {
+        let mut all_diagnostics = vec![];
+        let severity = Some(DiagnosticSeverity::HINT);
+        let message = match self.var {
+            AgentInteractVar::Push(_) => "Push",
+            AgentInteractVar::Prompt(_) => "Prompt",
         }
+        .to_string();
+        all_diagnostics.push(lsp_types::Diagnostic {
+            range: self.range,
+            severity,
+            message,
+            ..Default::default()
+        });
 
-        Ok(())
+        all_diagnostics
     }
 
-    #[tracing::instrument("get ex args", skip(w))]
-    // THis function should return a result
-    fn get_execution_args(
+    fn get_read_context(&self, r: &'i ServerStateReadGuard) -> MainResult<Self::ReadContext> {
+        let agent = r.agents.get_agent_ref(&self.agent_id).ok_or(other_err!(
+            "server has no agent with id {:#?}",
+            self.agent_id
+        ))?;
+        Ok(AgentReadCtx { agent })
+    }
+
+    fn get_write_context(
         &self,
-        w: &'i mut ServerStateWriteGuard<'g>,
-        interact_comment: &'i ParsedComment,
-        doc_info: InteractDocumentInfo<'i>,
-        args: &Vec<InteractArg>,
-    ) -> Option<AgentInteractExArgs<'i>> {
-        warn!("args: {args:?}");
+        w: &'i mut ServerStateWriteGuard,
+    ) -> MainResult<Self::WriteContext> {
+        let agent = w.agents.get_agent_mut(&self.agent_id).ok_or(other_err!(
+            "server has no agent with id {:#?}",
+            self.agent_id
+        ))?;
 
-        let mut first_arg_is_string = false;
-        let agent_char = match &args[0] {
-            InteractArg::Char(c) => *c,
-            InteractArg::String(s) => {
-                first_arg_is_string = true;
-                s.chars()
-                    .next()
-                    .expect("empty string as first interact arg")
-            }
-        };
+        Ok(AgentWriteCtx { agent })
+    }
+}
 
-        let agent_id = AgentID::from((doc_info.uri, agent_char));
-        let document_state = if let Knowledge::Document(toks) = w
-            .knowledge
-            .get(&uri_to_surreal_id(&doc_info.uri))
-            .unwrap()
-            .to_owned()
-        {
-            toks
-        } else {
-            panic!("got non document knowldge");
-        };
+mod tests {
+    use espionox::agents::Agent;
+    use lsp_types::Position;
 
-        let agent = w
-            .agents
-            .get_agent_mut(&agent_id)
-            .expect("No agent matching given id");
-        let content = match self {
-            Self::Prompt | Self::RagPrompt => args.into_iter().fold(String::new(), |str, arg| {
-                if let Some(arg_str) = arg
-                    .as_string()
-                    .and_then(|str| Some(str.to_string()))
-                    .or(arg.as_char().and_then(|ch| Some(ch.to_string())))
-                {
-                    if first_arg_is_string {
-                        format!("{str} {}", &arg_str[1..])
-                    } else {
-                        format!("{str} {arg_str}",)
-                    }
-                } else {
-                    str
-                }
-            }),
+    use crate::knowledge::parsing::tokens::{vec::TokenVec, Token};
 
-            Self::Push => {
-                if let Some(tok) = doc_info.tokens.get(doc_info.my_pos + 1) {
-                    match tok {
-                        Token::Block(content) => {
-                            warn!("Push interact should add {content} to agent context");
-                            content.to_string()
-                        }
-                        _ => {
-                            warn!(
-                                "Push interact's next token is not a Token::Block, got {}",
-                                tok.variant_display()
-                            );
-                            String::new()
-                        }
-                    }
-                } else {
-                    warn!("No token after Push interact");
-                    String::new()
-                }
-            }
-        };
+    use super::{AgentInteract, Interact};
 
-        // this might be BAD
-        if content.is_empty() {
-            warn!("passing empty user input to agent interact args");
-        }
-
-        let ex_args = AgentInteractExArgs {
-            lsp_state: AgentInteractLspState {
-                agent,
-                document_state,
-                uri: doc_info.uri,
+    #[test]
+    fn correctly_parses_interacts() {
+        let range = lsp_types::Range {
+            start: Position {
+                line: 0,
+                character: 0,
             },
-            user_input: AgentInteractUserInput {
-                content,
-                range: interact_comment.range,
+            end: Position {
+                line: 0,
+                character: 12,
             },
         };
+        let tok = Token::Comment(crate::knowledge::parsing::comments::ParsedComment {
+            content: "@_ someprompt".to_string(),
+            range: range.clone(),
+        });
+        let toks = TokenVec::new(vec![tok.clone()], vec![0]);
+        let interact = AgentInteract::try_from((&toks, &tok, 0)).unwrap();
 
-        warn!("got execution args");
+        let expected_interact = AgentInteract {
+            range,
+            var: crate::interact::agent::AgentInteractVar::Prompt(Some("someprompt".to_string())),
+            agent_id: crate::agents::AgentID::try_from_char('_').unwrap(),
+        };
 
-        Some(ex_args)
+        assert_eq!(interact, expected_interact);
     }
 }

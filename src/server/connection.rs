@@ -4,10 +4,11 @@ use crate::{
     rpc::{
         self,
         lsp::buffer_operations::BufferOpChannelStatus,
-        messages::{LspRelayResponse, Request, Response, RpcMessage, RpcPacket},
+        messages::{HealthResponse, LspRelayResponse, Request, Response, RpcMessage, RpcPacket},
     },
     MainResult,
 };
+use seraphic::packet::PacketRead;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -54,35 +55,12 @@ impl<'c> ConnectionThreadState<'c> {
 
             loop {
                 tokio::select! {
-                    Ok(_) = thread_state.read.readable() => {
-                        tracing::warn!("readable");
-                        last_idle = None;
+                    biased;
 
-                        match RpcPacket::async_read(&mut thread_state.read).await {
-                            Ok(Some(msg)) => {
-                                tracing::warn!("server received: {msg:#?}");
-                                match msg {
-                                    RpcMessage::Req{ id, req } =>{
-                                        if let Some(res) = thread_state.handle_rpc_request(req).await.expect("failure in handling rpc request") {
-                                           send_queue.push(RpcMessage::Res {id, res});
-                                        }
-                                    },
-                                    _ => {},
-                                }
-                            }
-                            Ok(None) => {},
-                            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                                tracing::warn!("would block");
-                                tokio::time::sleep(Duration::from_millis(10)).await;
-                                continue;
-                            }
-                            Err(e) => {
-                                panic!("failed to read from rpc client on server side: {e:#?}");
-                            }
-                        }
-                    },
-
-                    Ok(_) = thread_state.write.writable() => {
+                    Some(Ok(_)) = async {
+                            if !send_queue.is_empty() {
+                                Some(thread_state.write.writable().await)
+                            } else { None } } => {
                         while let Some(res_msg) = send_queue.pop() {
                             tracing::warn!("server responding: {res_msg:#?}");
 
@@ -97,6 +75,44 @@ impl<'c> ConnectionThreadState<'c> {
                                 .expect("failed to flush serverside stream");
                         }
                     },
+                    Ok(_) = thread_state.read.readable() => {
+                        tracing::warn!("readable");
+                        last_idle = None;
+
+                        match RpcPacket::async_read(&mut thread_state.read).await {
+                            Ok(PacketRead::Message(msg)) => {
+                                tracing::warn!("server received: {msg:#?}");
+                                match msg {
+                                    RpcMessage::Req{ id, req } =>{
+                                        if let Some(res) = thread_state.handle_rpc_request(req).await.expect("failure in handling rpc request") {
+                                            tracing::warn!("pushing to send queue: {res:#?}");
+                                           send_queue.push(RpcMessage::Res {id, res});
+                                        }
+                                    },
+                                    _ => {
+                                        tracing::warn!("no logic implemented for handling {msg:#?} on the serverside");
+                                    },
+                                }
+                            }
+                            Ok(PacketRead::Disconnected) => {
+                                tracing::warn!("disconnected");
+                                break;
+                            },
+                            Ok(PacketRead::Empty) => {
+                                tokio::time::sleep(Duration::from_millis(10)).await;
+                                continue;
+                            },
+                            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock
+                            => {
+                                tokio::time::sleep(Duration::from_millis(10)).await;
+                                continue;
+                            }
+                            Err(e) => {
+                                panic!("failed to read from rpc client on server side: {e:#?}");
+                            }
+                        }
+                    },
+
 
                     else => {
                         match last_idle {
@@ -123,10 +139,15 @@ impl<'c> ConnectionThreadState<'c> {
             Request::Lsp(lsp_req) => {
                 let message = serde_json::from_value::<lsp_server::Message>(lsp_req.payload)
                     .expect("failed to get lsp_server::Message from relay rq payload");
+                tracing::warn!("succesfully deserialized lsp relay message: {message:#?}");
                 if let Some(msg) = self.handle_lsp_message(message).await? {
                     let response = LspRelayResponse::from(msg);
                     return Ok(Some(response.into()));
                 }
+            }
+            Request::Health(_) => {
+                let response = Response::from(HealthResponse {});
+                return Ok(Some(response));
             }
         }
         Ok(Option::<Response>::None)
