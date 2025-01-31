@@ -68,6 +68,9 @@ impl FpsCounter {
 }
 
 impl Component for FpsCounter {
+    fn position(&self) -> super::ComponentPosition {
+        super::ComponentPosition::Header
+    }
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
             Action::Tick => self.app_tick()?,

@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 use color_eyre::Result;
 use crossterm::event::KeyEvent;
 use ratatui::prelude::Rect;
@@ -7,7 +9,10 @@ use tracing::{debug, info};
 
 use super::{
     action::Action,
-    components::{fps::FpsCounter, help::HelpComponent, home::Home, Component},
+    components::{
+        fps::FpsCounter, help::HelpComponent, home::Home, Component, ComponentPosition,
+        BODY_LAYOUT, OUTER_VERTICAL_LAYOUT,
+    },
     config::Config,
     tui::{Event, Tui},
 };
@@ -169,9 +174,17 @@ impl App {
     }
 
     fn render(&mut self, tui: &mut Tui) -> Result<()> {
+        let [header, body] = LazyLock::force(&OUTER_VERTICAL_LAYOUT).areas(tui.get_frame().area());
+        let [left_body, right_body] = LazyLock::force(&BODY_LAYOUT).areas(body);
+
         tui.draw(|frame| {
             for component in self.components.iter_mut() {
-                if let Err(err) = component.draw(frame, frame.area()) {
+                let area = match component.position() {
+                    ComponentPosition::Header => header,
+                    ComponentPosition::BodyLeft => left_body,
+                    ComponentPosition::BodyRight => right_body,
+                };
+                if let Err(err) = component.draw(frame, area) {
                     let _ = self
                         .action_tx
                         .send(Action::Error(format!("Failed to draw: {:?}", err)));

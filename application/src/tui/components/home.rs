@@ -18,6 +18,9 @@ impl Home {
 }
 
 impl Component for Home {
+    fn position(&self) -> super::ComponentPosition {
+        super::ComponentPosition::BodyLeft
+    }
     fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
         self.command_tx = Some(tx);
         Ok(())

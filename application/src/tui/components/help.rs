@@ -81,6 +81,12 @@ impl HelpComponent {
 }
 
 impl Component for HelpComponent {
+    fn position(&self) -> super::ComponentPosition {
+        if self.open {
+            return super::ComponentPosition::BodyLeft;
+        }
+        super::ComponentPosition::Header
+    }
     fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
         self.command_tx = Some(tx);
         Ok(())

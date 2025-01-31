@@ -1,7 +1,9 @@
+use std::sync::LazyLock;
+
 use color_eyre::Result;
 use crossterm::event::{KeyEvent, MouseEvent};
 use ratatui::{
-    layout::{Rect, Size},
+    layout::{Constraint, Layout, Rect, Size},
     Frame,
 };
 use tokio::sync::mpsc::UnboundedSender;
@@ -11,6 +13,18 @@ use super::{action::Action, config::Config, tui::Event};
 pub mod fps;
 pub mod help;
 pub mod home;
+
+pub enum ComponentPosition {
+    Header,
+    BodyLeft,
+    BodyRight,
+}
+/// Defines the header and body areas
+pub const OUTER_VERTICAL_LAYOUT: LazyLock<Layout> =
+    LazyLock::new(|| Layout::vertical([Constraint::Percentage(5), Constraint::Percentage(95)]));
+/// Splits up the body area
+pub const BODY_LAYOUT: LazyLock<Layout> =
+    LazyLock::new(|| Layout::horizontal([Constraint::Percentage(80), Constraint::Percentage(20)]));
 
 /// `Component` is a trait that represents a visual and interactive element of the user interface.
 ///
@@ -30,6 +44,10 @@ pub trait Component {
         let _ = tx; // to appease clippy
         Ok(())
     }
+
+    /// Denote where on the screen the component should be rendered
+    /// Used in `App::render()`
+    fn position(&self) -> ComponentPosition;
     /// Register a configuration handler that provides configuration settings if necessary.
     ///
     /// # Arguments
