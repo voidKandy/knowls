@@ -166,7 +166,7 @@ impl<'de> Deserialize<'de> for KeyBindings {
     }
 }
 
-fn parse_key_event(raw: &str) -> Result<KeyEvent, String> {
+pub(super) fn parse_key_event(raw: &str) -> Result<KeyEvent, String> {
     let raw_lower = raw.to_ascii_lowercase();
     let (remaining, modifiers) = extract_modifiers(&raw_lower);
     parse_key_code_with_modifiers(remaining, modifiers)
@@ -197,7 +197,7 @@ fn extract_modifiers(raw: &str) -> (&str, KeyModifiers) {
     (current, modifiers)
 }
 
-fn parse_key_code_with_modifiers(
+pub(super) fn parse_key_code_with_modifiers(
     raw: &str,
     mut modifiers: KeyModifiers,
 ) -> Result<KeyEvent, String> {

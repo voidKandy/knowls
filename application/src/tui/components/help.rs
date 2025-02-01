@@ -1,9 +1,10 @@
 use crate::tui::config::{key_event_to_string, Config};
 
-use super::super::action::Action;
 use super::Component;
+use super::{super::action::Action, ComponentId};
+use color_eyre::owo_colors::OwoColorize;
 use color_eyre::Result;
-use libc::KERN_INVALID_MEMORY_CONTROL;
+use crossterm::event::KeyEvent;
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},
@@ -54,7 +55,39 @@ impl Widget for HelpPopup<'_> {
 }
 
 impl HelpComponent {
+    /// For displaying all keys that will change the body of the application
+    fn body_change_message(&self) -> String {
+        let normal_map = self
+            .config
+            .keybindings
+            .get(&crate::tui::app::Mode::Normal)
+            .expect("should have normal map");
+
+        normal_map
+            .iter()
+            .filter_map(|(k, v)| {
+                if let Action::ChangeBody(id) = v {
+                    Some((k, id))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<(&Vec<KeyEvent>, &ComponentId)>>()
+            .into_iter()
+            .fold(String::new(), |acc, (keys, id)| {
+                let mut all_keys_str = keys.iter().fold(String::from("["), |acc, k| {
+                    format!("{acc}{}, ", key_event_to_string(k))
+                });
+                // pop off trailing ', '
+                all_keys_str.pop();
+                all_keys_str.pop();
+                all_keys_str.push(']');
+
+                format!("{acc} {all_keys_str} for {}", id.as_ref())
+            })
+    }
     fn popup(&self) -> HelpPopup {
+        tracing::warn!("keybindings for help popup: {:#?}", self.config.keybindings);
         let text = self
             .config
             .keybindings
@@ -82,10 +115,11 @@ impl HelpComponent {
 
 impl Component for HelpComponent {
     fn position(&self) -> super::ComponentPosition {
+        let id = "help".into();
         if self.open {
-            return super::ComponentPosition::BodyLeft;
+            return super::ComponentPosition::Popup(id);
         }
-        super::ComponentPosition::Header
+        super::ComponentPosition::Header(id)
     }
     fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
         self.command_tx = Some(tx);
@@ -118,7 +152,10 @@ impl Component for HelpComponent {
         if self.open {
             self.popup().render(area, frame.buffer_mut());
         } else {
-            let span = Span::styled("Press ? for help", Style::new().dim());
+            let span = Span::styled(
+                format!("Press ? for help | {}", self.body_change_message()),
+                Style::new().dim(),
+            );
             let paragraph = Paragraph::new(span).left_aligned();
             frame.render_widget(paragraph, top);
         }

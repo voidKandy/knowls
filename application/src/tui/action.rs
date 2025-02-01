@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use strum::Display;
 
-use super::app::Mode;
+use super::{app::Mode, components::ComponentId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Display, Serialize, Deserialize)]
 pub enum Action {
@@ -11,6 +11,7 @@ pub enum Action {
     /// open/close flag; true = open
     HelpDialogue(bool),
     ChangeMode(Mode),
+    ChangeBody(ComponentId),
     Suspend,
     Resume,
     Quit,

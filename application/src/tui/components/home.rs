@@ -19,7 +19,10 @@ impl Home {
 
 impl Component for Home {
     fn position(&self) -> super::ComponentPosition {
-        super::ComponentPosition::BodyLeft
+        super::ComponentPosition::Body {
+            id: "home".into(),
+            selection_keys: vec!['h'],
+        }
     }
     fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
         self.command_tx = Some(tx);

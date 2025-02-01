@@ -5,7 +5,7 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Style, Stylize},
     text::Span,
-    widgets::Paragraph,
+    widgets::{Paragraph, Wrap},
     Frame,
 };
 
@@ -69,7 +69,7 @@ impl FpsCounter {
 
 impl Component for FpsCounter {
     fn position(&self) -> super::ComponentPosition {
-        super::ComponentPosition::Header
+        super::ComponentPosition::SideBar("fps".into())
     }
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
@@ -87,7 +87,7 @@ impl Component for FpsCounter {
             self.ticks_per_second, self.frames_per_second
         );
         let span = Span::styled(message, Style::new().dim());
-        let paragraph = Paragraph::new(span).right_aligned();
+        let paragraph = Paragraph::new(span).left_aligned();
         frame.render_widget(paragraph, top);
         Ok(())
     }

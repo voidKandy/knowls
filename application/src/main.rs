@@ -1,4 +1,3 @@
-mod app;
 mod database;
 mod rpc;
 mod state;

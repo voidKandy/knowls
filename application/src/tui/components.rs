@@ -6,6 +6,7 @@ use ratatui::{
     layout::{Constraint, Layout, Rect, Size},
     Frame,
 };
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::sync::mpsc::UnboundedSender;
 
 use super::{action::Action, config::Config, tui::Event};
@@ -15,17 +16,48 @@ pub mod help;
 pub mod home;
 pub mod knowledge;
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ComponentId(String);
+
+impl AsRef<str> for ComponentId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<&str> for ComponentId {
+    fn from(value: &str) -> Self {
+        Self(value.to_string())
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum ComponentPosition {
-    Header,
-    BodyLeft,
-    BodyRight,
+    Header(ComponentId),
+    Popup(ComponentId),
+    Body {
+        id: ComponentId,
+        selection_keys: Vec<char>,
+    },
+    SideBar(ComponentId),
+}
+
+impl ComponentPosition {
+    pub fn id(&self) -> &ComponentId {
+        match self {
+            Self::Header(id) => id,
+            Self::Popup(id) => id,
+            Self::Body { id, .. } => id,
+            Self::SideBar(id) => id,
+        }
+    }
 }
 /// Defines the header and body areas
 pub const OUTER_VERTICAL_LAYOUT: LazyLock<Layout> =
     LazyLock::new(|| Layout::vertical([Constraint::Percentage(5), Constraint::Percentage(95)]));
 /// Splits up the body area
 pub const BODY_LAYOUT: LazyLock<Layout> =
-    LazyLock::new(|| Layout::horizontal([Constraint::Percentage(80), Constraint::Percentage(20)]));
+    LazyLock::new(|| Layout::horizontal([Constraint::Percentage(75), Constraint::Percentage(25)]));
 
 /// `Component` is a trait that represents a visual and interactive element of the user interface.
 ///

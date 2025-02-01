@@ -3,7 +3,7 @@ use std::sync::{Arc, LazyLock};
 use color_eyre::Result;
 use crossterm::event::KeyEvent;
 use knowls::MainResult;
-use ratatui::prelude::Rect;
+use ratatui::{prelude::Rect, Frame};
 use serde::{Deserialize, Serialize};
 use tokio::{
     net::{TcpListener, ToSocketAddrs},
@@ -16,10 +16,10 @@ use crate::{database::Database, state::State};
 use super::{
     action::Action,
     components::{
-        fps::FpsCounter, help::HelpComponent, home::Home, Component, ComponentPosition,
-        BODY_LAYOUT, OUTER_VERTICAL_LAYOUT,
+        fps::FpsCounter, help::HelpComponent, home::Home, knowledge::KnowledgeComponent, Component,
+        ComponentId, ComponentPosition, BODY_LAYOUT, OUTER_VERTICAL_LAYOUT,
     },
-    config::Config,
+    config::{parse_key_event, Config},
     tui::{Event, Tui},
 };
 
@@ -28,6 +28,7 @@ pub struct App {
     tick_rate: f64,
     frame_rate: f64,
     components: Vec<Box<dyn Component>>,
+    current_body_component: ComponentId,
     should_quit: bool,
     should_suspend: bool,
     mode: Mode,
@@ -65,7 +66,9 @@ impl App {
                 Box::new(Home::new()),
                 Box::new(FpsCounter::default()),
                 Box::new(HelpComponent::default()),
+                Box::new(KnowledgeComponent::default()),
             ],
+            current_body_component: Home::default().position().id().clone(),
             should_quit: false,
             should_suspend: false,
             config: Config::new()?,
@@ -84,12 +87,26 @@ impl App {
         tui.enter()?;
 
         for component in self.components.iter_mut() {
+            if let ComponentPosition::Body { selection_keys, id } = component.position() {
+                let normal_map = self
+                    .config
+                    .keybindings
+                    .get_mut(&Mode::Normal)
+                    .expect("normal map should exist");
+                for key in selection_keys {
+                    tracing::warn!("adding {key:#?}");
+                    let ret = normal_map.insert(
+                        vec![parse_key_event(&key.to_string()).unwrap()],
+                        Action::ChangeBody(id.clone()),
+                    );
+                    // it might be fine that this panics but im not sure
+                    assert!(ret.is_none(), "overwrote change body key!!");
+                }
+            }
+        }
+        for component in self.components.iter_mut() {
             component.register_action_handler(self.action_tx.clone())?;
-        }
-        for component in self.components.iter_mut() {
             component.register_config_handler(self.config.clone())?;
-        }
-        for component in self.components.iter_mut() {
             component.init(tui.size()?)?;
         }
 
@@ -178,6 +195,7 @@ impl App {
                 Action::Resize(w, h) => self.handle_resize(tui, w, h)?,
                 Action::Render => self.render(tui)?,
                 Action::ChangeMode(mode) => self.mode = mode,
+                Action::ChangeBody(ref id) => self.current_body_component = id.clone(),
                 _ => {}
             }
             for component in self.components.iter_mut() {
@@ -197,19 +215,23 @@ impl App {
 
     fn render(&mut self, tui: &mut Tui) -> Result<()> {
         let [header, body] = LazyLock::force(&OUTER_VERTICAL_LAYOUT).areas(tui.get_frame().area());
-        let [left_body, right_body] = LazyLock::force(&BODY_LAYOUT).areas(body);
+        let [body, sidebar] = LazyLock::force(&BODY_LAYOUT).areas(body);
 
         tui.draw(|frame| {
             for component in self.components.iter_mut() {
-                let area = match component.position() {
-                    ComponentPosition::Header => header,
-                    ComponentPosition::BodyLeft => left_body,
-                    ComponentPosition::BodyRight => right_body,
+                let (should_render, area) = match component.position() {
+                    ComponentPosition::Header(_) => (true, header),
+                    ComponentPosition::SideBar(_) => (true, sidebar),
+                    ComponentPosition::Popup(_) => (true, body),
+                    ComponentPosition::Body { id, .. } => (self.current_body_component == id, body),
                 };
-                if let Err(err) = component.draw(frame, area) {
-                    let _ = self
-                        .action_tx
-                        .send(Action::Error(format!("Failed to draw: {:?}", err)));
+
+                if should_render {
+                    if let Err(err) = component.draw(frame, area) {
+                        let _ = self
+                            .action_tx
+                            .send(Action::Error(format!("Failed to draw: {:?}", err)));
+                    }
                 }
             }
         })?;
