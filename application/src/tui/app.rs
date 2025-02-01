@@ -1,11 +1,17 @@
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 use color_eyre::Result;
 use crossterm::event::KeyEvent;
+use knowls::MainResult;
 use ratatui::prelude::Rect;
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc;
+use tokio::{
+    net::{TcpListener, ToSocketAddrs},
+    sync::mpsc,
+};
 use tracing::{debug, info};
+
+use crate::{database::Database, state::State};
 
 use super::{
     action::Action,
@@ -28,6 +34,9 @@ pub struct App {
     last_tick_key_events: Vec<KeyEvent>,
     action_tx: mpsc::UnboundedSender<Action>,
     action_rx: mpsc::UnboundedReceiver<Action>,
+
+    rpc_listener: TcpListener,
+    state: State,
 }
 
 #[derive(Default, Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -38,9 +47,18 @@ pub enum Mode {
 }
 
 impl App {
-    pub fn new(tick_rate: f64, frame_rate: f64) -> Result<Self> {
+    pub async fn new(
+        tick_rate: f64,
+        frame_rate: f64,
+        rpc_listen_addr: impl ToSocketAddrs,
+        database: Database,
+    ) -> MainResult<Self> {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
+        let rpc_listener = TcpListener::bind(rpc_listen_addr).await?;
+        let state = State::new(database);
         Ok(Self {
+            rpc_listener,
+            state,
             tick_rate,
             frame_rate,
             components: vec![
@@ -79,6 +97,10 @@ impl App {
         loop {
             self.handle_events(&mut tui).await?;
             self.handle_actions(&mut tui)?;
+            self.state
+                .manage_connections()
+                .await
+                .expect("failed to manage connections");
             if self.should_suspend {
                 tui.suspend()?;
                 action_tx.send(Action::Resume)?;

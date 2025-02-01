@@ -12,6 +12,9 @@ pub struct Cli {
     /// Frame rate, i.e. number of frames per second
     #[arg(short, long, value_name = "FLOAT", default_value_t = 60.0)]
     pub frame_rate: f64,
+
+    #[arg(short, long, value_name = "String", default_value_t =String::from("127.0.0.1:8888"))]
+    pub rpc_addr: String,
 }
 
 const VERSION_MESSAGE: &str = concat!(

@@ -13,6 +13,7 @@ use super::{action::Action, config::Config, tui::Event};
 pub mod fps;
 pub mod help;
 pub mod home;
+pub mod knowledge;
 
 pub enum ComponentPosition {
     Header,

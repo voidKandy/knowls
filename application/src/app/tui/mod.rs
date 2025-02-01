@@ -17,7 +17,7 @@ use std::{sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 use tracing::warn;
 
-use super::State;
+use super::super::state::State;
 
 #[derive(Debug, PartialEq, Eq, Default)]
 pub enum CurrentPane {

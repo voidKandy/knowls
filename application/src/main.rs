@@ -1,16 +1,12 @@
 mod app;
 mod database;
+mod rpc;
+mod state;
 mod trace;
 mod tui;
 
-use app::Application;
 use clap::Parser;
 use database::{config::DatabaseConfig, Database};
-use std::{
-    ops::RangeToInclusive,
-    sync::{Arc, LazyLock},
-};
-use tokio::sync::RwLock;
 
 #[tokio::main]
 async fn main() {
@@ -20,7 +16,10 @@ async fn main() {
     tui::logging::init().unwrap();
 
     let args = tui::cli::Cli::parse();
-    let mut app = tui::App::new(args.tick_rate, args.frame_rate).unwrap();
+    let database = Database::new(DatabaseConfig::default()).await.unwrap();
+    let mut app = tui::App::new(args.tick_rate, args.frame_rate, args.rpc_addr, database)
+        .await
+        .unwrap();
     app.run().await.unwrap();
     // color_eyre::install().expect("failed to prepare color_eyre");
     // let terminal = ratatui::init();
