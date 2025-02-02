@@ -1,9 +1,16 @@
-use std::sync::{Arc, LazyLock};
+use std::{
+    str::FromStr,
+    sync::{Arc, LazyLock},
+};
 
 use color_eyre::Result;
 use crossterm::event::KeyEvent;
 use knowls::MainResult;
-use ratatui::{prelude::Rect, Frame};
+use ratatui::{
+    prelude::Rect,
+    widgets::{Clear, Widget},
+    Frame,
+};
 use serde::{Deserialize, Serialize};
 use tokio::{
     net::{TcpListener, ToSocketAddrs},
@@ -11,7 +18,10 @@ use tokio::{
 };
 use tracing::{debug, info};
 
-use crate::{database::Database, state::State};
+use crate::{
+    database::{models::Knowledge, Database},
+    state::State,
+};
 
 use super::{
     action::Action,
@@ -47,6 +57,45 @@ pub enum Mode {
     Help,
 }
 
+use std::collections::HashMap;
+use surrealdb::RecordId;
+
+fn mock_state(database: Database) -> State {
+    let mut knowledge = HashMap::new();
+
+    let mock_entries = vec![
+        (
+            "knowledge:1",
+            "Zig is a general-purpose programming language.",
+        ),
+        (
+            "knowledge:2",
+            "Rust provides memory safety without garbage collection.",
+        ),
+        (
+            "knowledge:3",
+            "SurrealDB is a multi-model database for web applications.",
+        ),
+    ];
+
+    for (id, content) in mock_entries {
+        let record_id = RecordId::from_str(id).unwrap();
+        knowledge.insert(
+            record_id,
+            Knowledge {
+                id: id.to_string(),
+                content: content.to_string(),
+            },
+        );
+    }
+
+    State {
+        database,
+        knowledge,
+        connections: HashMap::new(),
+    }
+}
+
 impl App {
     pub async fn new(
         tick_rate: f64,
@@ -56,19 +105,20 @@ impl App {
     ) -> MainResult<Self> {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
         let rpc_listener = TcpListener::bind(rpc_listen_addr).await?;
-        let state = State::new(database);
+        let state = mock_state(database);
+        // let state = State::new(database);
         Ok(Self {
             rpc_listener,
-            state,
             tick_rate,
             frame_rate,
             components: vec![
                 Box::new(Home::new()),
                 Box::new(FpsCounter::default()),
                 Box::new(HelpComponent::default()),
-                Box::new(KnowledgeComponent::default()),
+                Box::new(KnowledgeComponent::from(&state)),
             ],
             current_body_component: Home::default().position().id().clone(),
+            state,
             should_quit: false,
             should_suspend: false,
             config: Config::new()?,

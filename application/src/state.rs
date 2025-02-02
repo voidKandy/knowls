@@ -16,9 +16,9 @@ pub struct Application {
 }
 
 pub struct State {
-    database: Database,
-    knowledge: HashMap<surrealdb::RecordId, Knowledge>,
-    connections: HashMap<String, ConnectionInfo>,
+    pub database: Database,
+    pub knowledge: HashMap<surrealdb::RecordId, Knowledge>,
+    pub connections: HashMap<String, ConnectionInfo>,
 }
 
 impl State {

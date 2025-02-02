@@ -1,6 +1,8 @@
 use surrealdb::sql::Thing;
 
+#[derive(Debug, Clone)]
 pub struct Knowledge {
-    id: Thing,
-    content: String,
+    /// will change down the line
+    pub id: String,
+    pub content: String,
 }
