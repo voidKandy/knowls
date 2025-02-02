@@ -1,3 +1,5 @@
+use std::process::Command;
+
 use super::super::action::Action;
 use super::Component;
 use crate::{
@@ -10,6 +12,7 @@ use crossterm::event::KeyCode;
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Rect},
+    prelude::CrosstermBackend,
     style::{Color, Style, Stylize},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, HighlightSpacing, List, ListItem, Paragraph, Widget, Wrap},
@@ -20,6 +23,7 @@ use tokio::sync::mpsc::UnboundedSender;
 #[derive(Debug, Clone)]
 pub struct KnowledgeComponent {
     command_tx: Option<UnboundedSender<Action>>,
+    config: Config,
     // String is ID of the Knowledge
     knowledge: Vec<(String, Knowledge)>,
     current_knowledge: Option<usize>,
@@ -29,6 +33,7 @@ impl From<&State> for KnowledgeComponent {
     fn from(value: &State) -> Self {
         Self {
             command_tx: None,
+            config: Config::default(),
             current_knowledge: None,
             knowledge: value
                 .knowledge
@@ -47,19 +52,6 @@ impl KnowledgeComponent {
         if asc {
             match self.current_knowledge {
                 Some(ref mut n) => {
-                    if *n >= self.knowledge.len() {
-                        *n = 0
-                    } else {
-                        *n += 1
-                    }
-                }
-                None => {
-                    self.current_knowledge = Some(0);
-                }
-            }
-        } else {
-            match self.current_knowledge {
-                Some(ref mut n) => {
                     if *n == 0 {
                         *n = self.knowledge.len() - 1
                     } else {
@@ -68,6 +60,19 @@ impl KnowledgeComponent {
                 }
                 None => {
                     self.current_knowledge = Some(self.knowledge.len() - 1);
+                }
+            }
+        } else {
+            match self.current_knowledge {
+                Some(ref mut n) => {
+                    if *n >= self.knowledge.len() {
+                        *n = 0
+                    } else {
+                        *n += 1
+                    }
+                }
+                None => {
+                    self.current_knowledge = Some(0);
                 }
             }
         }
@@ -90,6 +95,10 @@ impl Component for KnowledgeComponent {
             KeyCode::Char('j') => {
                 self.cycle_knowledge(false);
             }
+
+            KeyCode::Char('o') => {
+                return Ok(Some(Action::ChangeMode(crate::tui::app::Mode::Editor)));
+            }
             _ => {}
         }
         Ok(None)
@@ -97,6 +106,10 @@ impl Component for KnowledgeComponent {
 
     fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
         self.command_tx = Some(tx);
+        Ok(())
+    }
+    fn register_config_handler(&mut self, config: Config) -> Result<()> {
+        self.config = config;
         Ok(())
     }
 

@@ -1,13 +1,19 @@
 use std::{
+    any::Any,
+    process::Command,
     str::FromStr,
     sync::{Arc, LazyLock},
 };
 
 use color_eyre::Result;
-use crossterm::event::KeyEvent;
+use crossterm::{
+    event::{self, Event as TermEvent, KeyCode, KeyEvent, KeyEventKind},
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    ExecutableCommand,
+};
 use knowls::MainResult;
 use ratatui::{
-    prelude::Rect,
+    prelude::{CrosstermBackend, Rect},
     widgets::{Clear, Widget},
     Frame,
 };
@@ -55,11 +61,13 @@ pub enum Mode {
     #[default]
     Normal,
     Help,
+    Editor,
 }
 
 use std::collections::HashMap;
 use surrealdb::RecordId;
 
+type Terminal = ratatui::Terminal<CrosstermBackend<std::io::Stdout>>;
 fn mock_state(database: Database) -> State {
     let mut knowledge = HashMap::new();
 
@@ -129,6 +137,16 @@ impl App {
         })
     }
 
+    fn run_editor(&mut self, terminal: &mut Terminal) -> Result<()> {
+        std::io::stdout().execute(LeaveAlternateScreen)?;
+        disable_raw_mode()?;
+        Command::new("hx").arg("/tmp/knowledge.md").status()?;
+        std::io::stdout().execute(EnterAlternateScreen)?;
+        enable_raw_mode()?;
+        terminal.clear()?;
+        Ok(())
+    }
+
     pub async fn run(&mut self) -> Result<()> {
         let mut tui = Tui::new()?
             // .mouse(true) // uncomment this line to enable mouse support
@@ -193,7 +211,11 @@ impl App {
             Event::Tick => action_tx.send(Action::Tick)?,
             Event::Render => action_tx.send(Action::Render)?,
             Event::Resize(x, y) => action_tx.send(Action::Resize(x, y))?,
-            Event::Key(key) => self.handle_key_event(key)?,
+            Event::Key(key) => {
+                if self.mode != Mode::Editor {
+                    self.handle_key_event(key)?;
+                }
+            }
             _ => {}
         }
         for component in self.components.iter_mut() {
@@ -244,7 +266,17 @@ impl App {
                 Action::ClearScreen => tui.terminal.clear()?,
                 Action::Resize(w, h) => self.handle_resize(tui, w, h)?,
                 Action::Render => self.render(tui)?,
-                Action::ChangeMode(mode) => self.mode = mode,
+                Action::ChangeMode(mode) => {
+                    if let Mode::Editor = mode {
+                        tracing::warn!("going into editor mode");
+                        self.run_editor(&mut tui.terminal)
+                            .expect("failed to run editor");
+                        tracing::warn!("out of editor mode");
+                        // wil we wait here until we stop?
+                        self.action_tx.send(Action::ChangeMode(Mode::Normal))?;
+                    }
+                    self.mode = mode;
+                }
                 Action::ChangeBody(ref id) => self.current_body_component = id.clone(),
                 _ => {}
             }

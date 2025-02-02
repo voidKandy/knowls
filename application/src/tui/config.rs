@@ -12,6 +12,8 @@ use super::{action::Action, app::Mode};
 
 #[derive(Clone, Debug, Deserialize, Default)]
 pub struct AppConfig {
+    // #[serde(default)]
+    // pub editor_cmd: String,
     #[serde(default)]
     pub data_dir: PathBuf,
     #[serde(default)]
