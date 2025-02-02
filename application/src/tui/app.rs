@@ -1,11 +1,13 @@
 use std::{
     any::Any,
+    fs::OpenOptions,
+    io::Write,
     process::Command,
     str::FromStr,
     sync::{Arc, LazyLock},
 };
 
-use color_eyre::Result;
+use color_eyre::{eyre::Context, Result};
 use crossterm::{
     event::{self, Event as TermEvent, KeyCode, KeyEvent, KeyEventKind},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
@@ -43,6 +45,7 @@ pub struct App {
     config: Config,
     tick_rate: f64,
     frame_rate: f64,
+    editor_open: bool,
     components: Vec<Box<dyn Component>>,
     current_body_component: ComponentId,
     should_quit: bool,
@@ -61,7 +64,6 @@ pub enum Mode {
     #[default]
     Normal,
     Help,
-    Editor,
 }
 
 use std::collections::HashMap;
@@ -116,6 +118,7 @@ impl App {
         let state = mock_state(database);
         // let state = State::new(database);
         Ok(Self {
+            editor_open: false,
             rpc_listener,
             tick_rate,
             frame_rate,
@@ -137,10 +140,26 @@ impl App {
         })
     }
 
-    fn run_editor(&mut self, terminal: &mut Terminal) -> Result<()> {
+    fn run_editor(&mut self, terminal: &mut Terminal, buffer: &str) -> Result<()> {
+        // this should gracefully error as to not break the tui
         std::io::stdout().execute(LeaveAlternateScreen)?;
         disable_raw_mode()?;
-        Command::new("hx").arg("/tmp/knowledge.md").status()?;
+        let path = "/tmp/knowledge.md";
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(path)
+            .expect("failed to create file");
+
+        writeln!(file, "{buffer}")?;
+        tracing::warn!("wrote to created file");
+
+        Command::new("hx")
+            .arg(path)
+            .status()
+            .expect("failed to run open command");
+        tracing::warn!("editor should open");
         std::io::stdout().execute(EnterAlternateScreen)?;
         enable_raw_mode()?;
         terminal.clear()?;
@@ -181,7 +200,10 @@ impl App {
         let action_tx = self.action_tx.clone();
         loop {
             self.handle_events(&mut tui).await?;
-            self.handle_actions(&mut tui)?;
+            if !self.editor_open {
+                self.handle_actions(&mut tui)?;
+            }
+
             self.state
                 .manage_connections()
                 .await
@@ -212,9 +234,7 @@ impl App {
             Event::Render => action_tx.send(Action::Render)?,
             Event::Resize(x, y) => action_tx.send(Action::Resize(x, y))?,
             Event::Key(key) => {
-                if self.mode != Mode::Editor {
-                    self.handle_key_event(key)?;
-                }
+                self.handle_key_event(key)?;
             }
             _ => {}
         }
@@ -266,15 +286,16 @@ impl App {
                 Action::ClearScreen => tui.terminal.clear()?,
                 Action::Resize(w, h) => self.handle_resize(tui, w, h)?,
                 Action::Render => self.render(tui)?,
+                Action::OpenEditor(ref buffer) => {
+                    self.editor_open = true;
+                    tracing::warn!("going into editor mode");
+                    self.run_editor(&mut tui.terminal, &buffer)
+                        .expect("failed to run editor");
+                    // wil we wait here until we stop?
+                    self.editor_open = false;
+                    tracing::warn!("out of editor mode");
+                }
                 Action::ChangeMode(mode) => {
-                    if let Mode::Editor = mode {
-                        tracing::warn!("going into editor mode");
-                        self.run_editor(&mut tui.terminal)
-                            .expect("failed to run editor");
-                        tracing::warn!("out of editor mode");
-                        // wil we wait here until we stop?
-                        self.action_tx.send(Action::ChangeMode(Mode::Normal))?;
-                    }
                     self.mode = mode;
                 }
                 Action::ChangeBody(ref id) => self.current_body_component = id.clone(),

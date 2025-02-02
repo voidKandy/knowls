@@ -97,7 +97,10 @@ impl Component for KnowledgeComponent {
             }
 
             KeyCode::Char('o') => {
-                return Ok(Some(Action::ChangeMode(crate::tui::app::Mode::Editor)));
+                if let Some(i) = self.current_knowledge {
+                    let content = self.knowledge.get(i).as_ref().unwrap().1.content.to_owned();
+                    return Ok(Some(Action::OpenEditor(content)));
+                }
             }
             _ => {}
         }
