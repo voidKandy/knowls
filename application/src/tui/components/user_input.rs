@@ -1,5 +1,11 @@
-use std::{marker::PhantomData, path::PathBuf, str::FromStr};
+use std::{
+    marker::PhantomData,
+    path::PathBuf,
+    str::FromStr,
+    time::{Duration, Instant},
+};
 
+use color_eyre::owo_colors::OwoColorize;
 use crossterm::event::{KeyCode, KeyEvent};
 use knowls::{MainErr, MainResult};
 use ratatui::{
@@ -9,14 +15,27 @@ use ratatui::{
     text::Line,
     widgets::{Block, Borders, Clear, Paragraph, Widget, WidgetRef, Wrap},
 };
+use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{database::models::Knowledge, tui::action::Action};
 
+use super::Component;
+
+#[derive(Debug, Clone)]
+enum InputPopupStatus {
+    Idle,
+    Error { timestamp: Instant, err_msg: String },
+    Success(Instant),
+}
+
+const STATUS_RESET_DURATION: Duration = Duration::from_secs(2);
+
 #[derive(Debug, Clone)]
 pub struct UserInputPopup<A> {
+    title: String,
     /// Current value of the input box
     input: String,
-    status: Option<(String, Color)>,
+    status: InputPopupStatus,
     /// Position of cursor in the editor area.
     character_index: usize,
     /// Action to trigger when submitting the text
@@ -32,8 +51,9 @@ pub trait UserInputPopupConfig {
 impl<A: UserInputPopupConfig> Default for UserInputPopup<A> {
     fn default() -> Self {
         Self {
+            title: String::from("User Input"),
             input: String::new(),
-            status: None,
+            status: InputPopupStatus::Idle,
             character_index: 0,
             _phantom: PhantomData,
         }
@@ -41,6 +61,12 @@ impl<A: UserInputPopupConfig> Default for UserInputPopup<A> {
 }
 
 impl<A: UserInputPopupConfig> UserInputPopup<A> {
+    pub fn new_with_title(title: &str) -> Self {
+        UserInputPopup {
+            title: String::from(title),
+            ..Default::default()
+        }
+    }
     /// helper function to create a centered rect using up certain percentage of the available rect `r`
 
     fn move_cursor_left(&mut self) {
@@ -101,21 +127,26 @@ impl<A: UserInputPopupConfig> UserInputPopup<A> {
         self.character_index = 0;
     }
 
-    fn submit(&mut self) {
-        match PathBuf::from_str(&self.input) {
-            Ok(_path) => {
-                self.status = Some((String::from("Added knowledge path"), Color::Green));
+    fn submit(&mut self) -> color_eyre::Result<Option<Action>> {
+        match A::trigger_action_from_input(self.input.clone()) {
+            Ok(action) => {
+                self.status = InputPopupStatus::Success(Instant::now());
+                Ok(Some(action))
             }
-            Err(e) => self.status = Some((format!("Did not pass valid path: {e:#?}"), Color::Red)),
+            Err(err) => {
+                self.status = InputPopupStatus::Error {
+                    timestamp: Instant::now(),
+                    err_msg: err.to_string(),
+                };
+                Ok(None)
+            }
         }
     }
 
     pub fn handle_keyevent(&mut self, key: KeyEvent) -> color_eyre::Result<Option<Action>> {
         match key.code {
             KeyCode::Enter => {
-                self.submit();
-                let action = A::trigger_action_from_input(self.input.clone())?;
-                return Ok(Some(action));
+                return self.submit();
             }
             KeyCode::Char(to_insert) => self.enter_char(to_insert),
             KeyCode::Backspace => self.delete_char(),
@@ -128,8 +159,26 @@ impl<A: UserInputPopupConfig> UserInputPopup<A> {
     }
 }
 
-impl<A: UserInputPopupConfig> WidgetRef for UserInputPopup<A> {
-    fn render_ref(&self, area: Rect, buf: &mut Buffer) {
+impl<A: UserInputPopupConfig> Component for UserInputPopup<A> {
+    fn update(&mut self, action: Action) -> color_eyre::eyre::Result<Option<Action>> {
+        match action {
+            Action::Tick => {
+                if let Some(instant) = match self.status {
+                    InputPopupStatus::Error { timestamp, .. } => Some(timestamp),
+                    InputPopupStatus::Success(inst) => Some(inst),
+                    _ => None,
+                } {
+                    if instant.elapsed() >= STATUS_RESET_DURATION {
+                        self.status = InputPopupStatus::Idle;
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(None)
+    }
+
+    fn draw(&mut self, frame: &mut ratatui::Frame, area: Rect) -> color_eyre::eyre::Result<()> {
         // ensure that all cells under the popup are cleared to avoid leaking content
         // We add a little padding
         let clear_area = {
@@ -138,18 +187,25 @@ impl<A: UserInputPopupConfig> WidgetRef for UserInputPopup<A> {
             a.y += a.y / 10;
             a
         };
+        let buf = frame.buffer_mut();
         Clear.render(clear_area, buf);
+        let (title_bottom, title_color) = match &self.status {
+            InputPopupStatus::Idle => (" Exit <Esc> - Subit <Enter> ".to_string(), Color::Gray),
+            InputPopupStatus::Error { err_msg, .. } => {
+                tracing::error!("input popup submit failed: {err_msg:#?}");
+                (err_msg.to_owned(), Color::Red)
+            }
+            InputPopupStatus::Success(_) => (String::from("Added knowledge path"), Color::Green),
+        };
         let block = Block::new()
-            .title("Add Knowlege")
-            .title_style(Style::new().yellow())
-            .title_bottom(" Exit <Esc> - Subit <Enter> ")
+            .title(self.title.clone())
+            .title_style(title_color)
+            .title_bottom(title_bottom)
             .borders(Borders::ALL);
         Paragraph::new(self.input.to_owned())
             .wrap(Wrap { trim: true })
             .block(block)
             .render(area, buf);
-        if let Some((status, color)) = self.status.as_ref() {
-            Line::styled(status, color.to_owned());
-        }
+        Ok(())
     }
 }

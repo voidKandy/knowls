@@ -9,7 +9,7 @@ use ratatui::{
     Frame,
 };
 
-use super::Component;
+use super::{Component, PageComponent};
 
 use super::super::action::Action;
 
@@ -66,11 +66,12 @@ impl FpsCounter {
         Ok(())
     }
 }
-
-impl Component for FpsCounter {
+impl PageComponent for FpsCounter {
     fn position(&self) -> super::ComponentPosition {
         super::ComponentPosition::SideBar("fps".into())
     }
+}
+impl Component for FpsCounter {
     fn update(&mut self, action: Action) -> Result<Option<Action>> {
         match action {
             Action::Tick => self.app_tick()?,

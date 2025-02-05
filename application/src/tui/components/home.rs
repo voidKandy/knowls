@@ -3,7 +3,7 @@ use ratatui::{prelude::*, widgets::*};
 use tokio::sync::mpsc::UnboundedSender;
 
 use super::super::{action::Action, config::Config};
-use super::Component;
+use super::{Component, PageComponent};
 
 #[derive(Default)]
 pub struct Home {
@@ -17,13 +17,15 @@ impl Home {
     }
 }
 
-impl Component for Home {
+impl PageComponent for Home {
     fn position(&self) -> super::ComponentPosition {
         super::ComponentPosition::Body {
             id: "home".into(),
             selection_keys: vec!['h'],
         }
     }
+}
+impl Component for Home {
     fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
         self.command_tx = Some(tx);
         Ok(())

@@ -60,6 +60,15 @@ pub const OUTER_VERTICAL_LAYOUT: LazyLock<Layout> =
 pub const BODY_LAYOUT: LazyLock<Layout> =
     LazyLock::new(|| Layout::horizontal([Constraint::Percentage(75), Constraint::Percentage(25)]));
 
+/// `PageComponent` is just a component that is loaded into the UI from the beginning of runtime
+/// Rendered by outermost Application
+
+pub trait PageComponent: Component {
+    /// Denote where on the screen the component should be rendered
+    /// Used in `App::render()`
+    fn position(&self) -> ComponentPosition;
+}
+
 /// `Component` is a trait that represents a visual and interactive element of the user interface.
 ///
 /// Implementors of this trait can be registered with the main application loop and will be able to
@@ -79,9 +88,6 @@ pub trait Component {
         Ok(())
     }
 
-    /// Denote where on the screen the component should be rendered
-    /// Used in `App::render()`
-    fn position(&self) -> ComponentPosition;
     /// Register a configuration handler that provides configuration settings if necessary.
     ///
     /// # Arguments

@@ -1,8 +1,8 @@
 use std::{path::PathBuf, process::Command, str::FromStr};
 
 use super::user_input::UserInputPopupConfig;
-use super::Component;
 use super::{super::action::Action, user_input::UserInputPopup};
+use super::{Component, PageComponent};
 use crate::{
     database::models::Knowledge,
     state::State,
@@ -105,14 +105,16 @@ impl KnowledgeComponent {
     }
 }
 
-impl Component for KnowledgeComponent {
+impl PageComponent for KnowledgeComponent {
     fn position(&self) -> super::ComponentPosition {
         super::ComponentPosition::Body {
             id: "knowledge".into(),
             selection_keys: vec!['k'],
         }
     }
+}
 
+impl Component for KnowledgeComponent {
     fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) -> Result<Option<Action>> {
         match key.code {
             code if self.add_knowledge_popup.is_some() => {
@@ -143,7 +145,9 @@ impl Component for KnowledgeComponent {
 
             KeyCode::Char('a') => {
                 // open add knowledge popup
-                self.add_knowledge_popup = Some(UserInputPopup::default());
+                self.add_knowledge_popup = Some(AddKnowledgePopup::new_with_title(
+                    "Type a Path to a Knowledge Source",
+                ));
             }
 
             _ => {}
@@ -166,6 +170,9 @@ impl Component for KnowledgeComponent {
             // Action::Render => self.render_tick()?,
             _ => {}
         };
+        if let Some(popup) = self.add_knowledge_popup.as_mut() {
+            popup.update(action)?;
+        }
         Ok(None)
     }
 
@@ -206,11 +213,9 @@ impl Component for KnowledgeComponent {
             .highlight_spacing(HighlightSpacing::Always);
         frame.render_widget(list, body);
 
-        if let Some(popup) = self.add_knowledge_popup.as_ref() {
-            // let block = Block::bordered().title("Add Knowledge");
+        if let Some(popup) = self.add_knowledge_popup.as_mut() {
             let area = AddKnowledge::popup_area(area, 60, 20);
-            frame.render_widget(Clear, area);
-            popup.render_ref(area, frame.buffer_mut());
+            popup.draw(frame, area)?;
         }
         Ok(())
     }

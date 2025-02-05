@@ -1,7 +1,7 @@
 use crate::tui::config::{key_event_to_string, Config};
 
-use super::Component;
 use super::{super::action::Action, ComponentId};
+use super::{Component, PageComponent};
 use color_eyre::owo_colors::OwoColorize;
 use color_eyre::Result;
 use crossterm::event::KeyEvent;
@@ -113,7 +113,7 @@ impl HelpComponent {
     }
 }
 
-impl Component for HelpComponent {
+impl PageComponent for HelpComponent {
     fn position(&self) -> super::ComponentPosition {
         let id = "help".into();
         if self.open {
@@ -121,6 +121,8 @@ impl Component for HelpComponent {
         }
         super::ComponentPosition::Header(id)
     }
+}
+impl Component for HelpComponent {
     fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
         self.command_tx = Some(tx);
         Ok(())

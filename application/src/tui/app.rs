@@ -35,7 +35,7 @@ use super::{
     action::Action,
     components::{
         fps::FpsCounter, help::HelpComponent, home::Home, knowledge::KnowledgeComponent, Component,
-        ComponentId, ComponentPosition, BODY_LAYOUT, OUTER_VERTICAL_LAYOUT,
+        ComponentId, ComponentPosition, PageComponent, BODY_LAYOUT, OUTER_VERTICAL_LAYOUT,
     },
     config::{parse_key_event, Config},
     tui::{Event, Tui},
@@ -46,7 +46,7 @@ pub struct App {
     tick_rate: f64,
     frame_rate: f64,
     editor_open: bool,
-    components: Vec<Box<dyn Component>>,
+    components: Vec<Box<dyn PageComponent>>,
     current_body_component: ComponentId,
     should_quit: bool,
     should_suspend: bool,
