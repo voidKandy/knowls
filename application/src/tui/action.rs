@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 use strum::Display;
 
@@ -7,6 +9,10 @@ use super::{app::Mode, components::ComponentId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Display, Serialize, Deserialize)]
 pub enum Action {
+    // This is specific to knowledge
+    // No other module has a specific action therefore this is marked as smelly
+    InsertKnowledge(Knowledge),
+
     Tick,
     Render,
     Resize(u16, u16),

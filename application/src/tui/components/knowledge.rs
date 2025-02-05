@@ -1,17 +1,20 @@
-use std::process::Command;
+use std::{path::PathBuf, process::Command, str::FromStr};
 
-use super::super::action::Action;
+use super::user_input::UserInputPopupConfig;
 use super::Component;
+use super::{super::action::Action, user_input::UserInputPopup};
 use crate::{
     database::models::Knowledge,
     state::State,
     tui::config::{key_event_to_string, Config},
 };
 use color_eyre::Result;
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
+use knowls::MainResult;
+use ratatui::widgets::WidgetRef;
 use ratatui::{
     buffer::Buffer,
-    layout::{Constraint, Layout, Rect},
+    layout::{Constraint, Flex, Layout, Rect},
     prelude::CrosstermBackend,
     style::{Color, Style, Stylize},
     text::{Line, Span, Text},
@@ -20,13 +23,35 @@ use ratatui::{
 };
 use tokio::sync::mpsc::UnboundedSender;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct KnowledgeComponent {
     command_tx: Option<UnboundedSender<Action>>,
     config: Config,
     // String is ID of the Knowledge
     knowledge: Vec<(String, Knowledge)>,
     current_knowledge: Option<usize>,
+    add_knowledge_popup: Option<AddKnowledgePopup>,
+}
+
+type AddKnowledgePopup = UserInputPopup<AddKnowledge>;
+#[derive(Debug)]
+struct AddKnowledge;
+impl UserInputPopupConfig for AddKnowledge {
+    fn popup_area(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
+        let vertical = Layout::vertical([Constraint::Percentage(percent_y)]).flex(Flex::Center);
+        let horizontal = Layout::horizontal([Constraint::Percentage(percent_x)]).flex(Flex::Center);
+        let [area] = vertical.areas(area);
+        let [area] = horizontal.areas(area);
+        area
+    }
+    fn trigger_action_from_input(input: String) -> color_eyre::Result<Action> {
+        let path = PathBuf::from_str(&input)?;
+        let knowledge = Knowledge {
+            id: input,
+            content: std::fs::read_to_string(&path)?,
+        };
+        Ok(Action::InsertKnowledge(knowledge))
+    }
 }
 
 impl From<&State> for KnowledgeComponent {
@@ -35,6 +60,7 @@ impl From<&State> for KnowledgeComponent {
             command_tx: None,
             config: Config::default(),
             current_knowledge: None,
+            add_knowledge_popup: None,
             knowledge: value
                 .knowledge
                 .iter()
@@ -89,6 +115,18 @@ impl Component for KnowledgeComponent {
 
     fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) -> Result<Option<Action>> {
         match key.code {
+            code if self.add_knowledge_popup.is_some() => {
+                let popup = self.add_knowledge_popup.as_mut().unwrap();
+                match code {
+                    // close popup
+                    KeyCode::Esc => {
+                        self.add_knowledge_popup = None;
+                        return Ok(None);
+                    }
+                    _ if key.kind == KeyEventKind::Press => return popup.handle_keyevent(key),
+                    _ => {}
+                }
+            }
             KeyCode::Char('k') => {
                 self.cycle_knowledge(true);
             }
@@ -102,6 +140,12 @@ impl Component for KnowledgeComponent {
                     return Ok(Some(Action::OpenEditor(content)));
                 }
             }
+
+            KeyCode::Char('a') => {
+                // open add knowledge popup
+                self.add_knowledge_popup = Some(UserInputPopup::default());
+            }
+
             _ => {}
         }
         Ok(None)
@@ -161,6 +205,13 @@ impl Component for KnowledgeComponent {
             .highlight_symbol(">")
             .highlight_spacing(HighlightSpacing::Always);
         frame.render_widget(list, body);
+
+        if let Some(popup) = self.add_knowledge_popup.as_ref() {
+            // let block = Block::bordered().title("Add Knowledge");
+            let area = AddKnowledge::popup_area(area, 60, 20);
+            frame.render_widget(Clear, area);
+            popup.render_ref(area, frame.buffer_mut());
+        }
         Ok(())
     }
 }

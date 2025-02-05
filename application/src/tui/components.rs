@@ -15,6 +15,7 @@ pub mod fps;
 pub mod help;
 pub mod home;
 pub mod knowledge;
+pub mod user_input;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ComponentId(String);
