@@ -1,25 +1,16 @@
+use crossterm::event::{KeyCode, KeyEvent};
 use std::{
     marker::PhantomData,
-    path::PathBuf,
-    str::FromStr,
     time::{Duration, Instant},
 };
-
-use color_eyre::owo_colors::OwoColorize;
-use crossterm::event::{KeyCode, KeyEvent};
-use knowls::{MainErr, MainResult};
-use ratatui::{
-    buffer::Buffer,
-    layout::{Constraint, Flex, Layout, Rect},
-    style::{Color, Style, Stylize},
-    text::Line,
-    widgets::{Block, Borders, Clear, Paragraph, Widget, WidgetRef, Wrap},
-};
-use tokio::sync::mpsc::UnboundedSender;
-
-use crate::{database::models::Knowledge, tui::action::Action};
-
+// use knowls::{MainErr, MainResult};
 use super::Component;
+use crate::tui::action::Action;
+use ratatui::{
+    layout::Rect,
+    style::Color,
+    widgets::{Block, Borders, Clear, Paragraph, Widget, Wrap},
+};
 
 #[derive(Debug, Clone)]
 enum InputPopupStatus {
@@ -142,8 +133,10 @@ impl<A: UserInputPopupConfig> UserInputPopup<A> {
             }
         }
     }
+}
 
-    pub fn handle_keyevent(&mut self, key: KeyEvent) -> color_eyre::Result<Option<Action>> {
+impl<A: UserInputPopupConfig> Component for UserInputPopup<A> {
+    fn handle_key_event(&mut self, key: KeyEvent) -> color_eyre::eyre::Result<Option<Action>> {
         match key.code {
             KeyCode::Enter => {
                 return self.submit();
@@ -157,9 +150,6 @@ impl<A: UserInputPopupConfig> UserInputPopup<A> {
         }
         Ok(None)
     }
-}
-
-impl<A: UserInputPopupConfig> Component for UserInputPopup<A> {
     fn update(&mut self, action: Action) -> color_eyre::eyre::Result<Option<Action>> {
         match action {
             Action::Tick => {
@@ -169,6 +159,9 @@ impl<A: UserInputPopupConfig> Component for UserInputPopup<A> {
                     _ => None,
                 } {
                     if instant.elapsed() >= STATUS_RESET_DURATION {
+                        if let InputPopupStatus::Success(_) = self.status {
+                            self.input = String::new();
+                        }
                         self.status = InputPopupStatus::Idle;
                     }
                 }

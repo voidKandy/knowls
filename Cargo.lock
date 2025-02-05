@@ -173,6 +173,7 @@ dependencies = [
  "futures",
  "knowls",
  "libc",
+ "lsp-types",
  "ratatui",
  "seraphic",
  "serde",

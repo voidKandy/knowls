@@ -1,26 +1,20 @@
-use std::{path::PathBuf, process::Command, str::FromStr};
-
 use super::user_input::UserInputPopupConfig;
 use super::{super::action::Action, user_input::UserInputPopup};
 use super::{Component, PageComponent};
-use crate::{
-    database::models::Knowledge,
-    state::State,
-    tui::config::{key_event_to_string, Config},
-};
+use crate::{database::models::Knowledge, state::State, tui::config::Config};
+use color_eyre::owo_colors::OwoColorize;
 use color_eyre::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use knowls::MainResult;
-use ratatui::widgets::WidgetRef;
+use crossterm::event::{KeyCode, KeyEventKind};
+use ratatui::symbols::scrollbar;
+use ratatui::widgets::{Clear, Scrollbar, ScrollbarOrientation, ScrollbarState, Widget, Wrap};
 use ratatui::{
-    buffer::Buffer,
     layout::{Constraint, Flex, Layout, Rect},
-    prelude::CrosstermBackend,
-    style::{Color, Style, Stylize},
-    text::{Line, Span, Text},
-    widgets::{Block, Borders, Clear, HighlightSpacing, List, ListItem, Paragraph, Widget, Wrap},
+    style::{Color, Stylize},
+    text::Line,
+    widgets::{Block, Borders, HighlightSpacing, List, ListItem, Paragraph},
     Frame,
 };
+use std::{path::PathBuf, str::FromStr};
 use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Debug)]
@@ -30,9 +24,40 @@ pub struct KnowledgeComponent {
     // String is ID of the Knowledge
     knowledge: Vec<(String, Knowledge)>,
     current_knowledge: Option<usize>,
-    add_knowledge_popup: Option<AddKnowledgePopup>,
+    popup: Option<Popup>,
 }
 
+#[derive(Debug)]
+enum Popup {
+    AddKnowledge(AddKnowledgePopup),
+    ViewKnowledge(ViewKnowledgePopup),
+}
+
+impl From<AddKnowledgePopup> for Popup {
+    fn from(value: AddKnowledgePopup) -> Self {
+        Self::AddKnowledge(value)
+    }
+}
+impl From<ViewKnowledgePopup> for Popup {
+    fn from(value: ViewKnowledgePopup) -> Self {
+        Self::ViewKnowledge(value)
+    }
+}
+
+impl Popup {
+    fn is_add(&self) -> bool {
+        if let Self::AddKnowledge(_) = self {
+            return true;
+        }
+        false
+    }
+    fn is_view(&self) -> bool {
+        if let Self::ViewKnowledge(_) = self {
+            return true;
+        }
+        false
+    }
+}
 type AddKnowledgePopup = UserInputPopup<AddKnowledge>;
 #[derive(Debug)]
 struct AddKnowledge;
@@ -45,12 +70,68 @@ impl UserInputPopupConfig for AddKnowledge {
         area
     }
     fn trigger_action_from_input(input: String) -> color_eyre::Result<Action> {
-        let path = PathBuf::from_str(&input)?;
-        let knowledge = Knowledge {
-            id: input,
-            content: std::fs::read_to_string(&path)?,
-        };
+        let path = PathBuf::from_str(&input)?.canonicalize()?;
+        tracing::warn!("got knowledge path: {path:?}");
+        let content = std::fs::read_to_string(&path)?;
+        let knowledge = Knowledge::new(path, content);
         Ok(Action::InsertKnowledge(knowledge))
+    }
+}
+
+#[derive(Debug)]
+struct ViewKnowledgePopup {
+    name: String,
+    content: String,
+    vertical_scroll: usize,
+    vertical_scroll_state: ScrollbarState,
+}
+
+impl Component for ViewKnowledgePopup {
+    fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) -> Result<Option<Action>> {
+        match key.code {
+            // KeyCode::Char('q') => return Ok(()),
+            KeyCode::Char('j') | KeyCode::Down => {
+                self.vertical_scroll = self.vertical_scroll.saturating_add(1);
+                self.vertical_scroll_state =
+                    self.vertical_scroll_state.position(self.vertical_scroll);
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                self.vertical_scroll = self.vertical_scroll.saturating_sub(1);
+                self.vertical_scroll_state =
+                    self.vertical_scroll_state.position(self.vertical_scroll);
+            }
+
+            _ => {}
+        }
+        Ok(None)
+    }
+    fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
+        // ensure that all cells under the popup are cleared to avoid leaking content
+        // We add a little padding
+        let clear_area = {
+            let mut a = area.clone();
+            a.x += a.x / 10;
+            a.y += a.y / 10;
+            a
+        };
+        let buf = frame.buffer_mut();
+        Clear.render(clear_area, buf);
+        let block = Block::new().title(self.name.clone()).borders(Borders::ALL);
+        Paragraph::new(self.content.to_owned())
+            .wrap(Wrap { trim: true })
+            .scroll((self.vertical_scroll as u16, 0))
+            .block(block)
+            .render(area, buf);
+        frame.render_stateful_widget(
+            Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                .symbols(scrollbar::VERTICAL)
+                .begin_symbol(None)
+                .track_symbol(None)
+                .end_symbol(None),
+            area,
+            &mut self.vertical_scroll_state,
+        );
+        Ok(())
     }
 }
 
@@ -60,7 +141,7 @@ impl From<&State> for KnowledgeComponent {
             command_tx: None,
             config: Config::default(),
             current_knowledge: None,
-            add_knowledge_popup: None,
+            popup: None,
             knowledge: value
                 .knowledge
                 .iter()
@@ -71,6 +152,14 @@ impl From<&State> for KnowledgeComponent {
 }
 
 impl KnowledgeComponent {
+    pub fn update_knowledge(&mut self, state: &State) {
+        let knowledge = state
+            .knowledge
+            .iter()
+            .map(|(id, knowledge)| (id.to_string(), knowledge.clone()))
+            .collect();
+        self.knowledge = knowledge;
+    }
     fn cycle_knowledge(&mut self, asc: bool) {
         if self.knowledge.is_empty() {
             return;
@@ -117,16 +206,34 @@ impl PageComponent for KnowledgeComponent {
 impl Component for KnowledgeComponent {
     fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) -> Result<Option<Action>> {
         match key.code {
-            code if self.add_knowledge_popup.is_some() => {
-                let popup = self.add_knowledge_popup.as_mut().unwrap();
-                match code {
-                    // close popup
-                    KeyCode::Esc => {
-                        self.add_knowledge_popup = None;
-                        return Ok(None);
+            code if self.popup.is_some() => {
+                match self.popup.as_mut().unwrap() {
+                    Popup::AddKnowledge(popup) => {
+                        match code {
+                            // close popup
+                            KeyCode::Esc => {
+                                self.popup = None;
+                                return Ok(None);
+                            }
+                            _ if key.kind == KeyEventKind::Press => {
+                                return popup.handle_key_event(key)
+                            }
+                            _ => {}
+                        }
                     }
-                    _ if key.kind == KeyEventKind::Press => return popup.handle_keyevent(key),
-                    _ => {}
+                    Popup::ViewKnowledge(popup) => {
+                        match code {
+                            // close popup
+                            KeyCode::Esc => {
+                                self.popup = None;
+                                return Ok(None);
+                            }
+                            _ if key.kind == KeyEventKind::Press => {
+                                return popup.handle_key_event(key)
+                            }
+                            _ => {}
+                        }
+                    }
                 }
             }
             KeyCode::Char('k') => {
@@ -145,9 +252,28 @@ impl Component for KnowledgeComponent {
 
             KeyCode::Char('a') => {
                 // open add knowledge popup
-                self.add_knowledge_popup = Some(AddKnowledgePopup::new_with_title(
-                    "Type a Path to a Knowledge Source",
-                ));
+                self.popup = Some(
+                    AddKnowledgePopup::new_with_title("Type a Path to a Knowledge Source").into(),
+                );
+            }
+
+            KeyCode::Char('v') => {
+                // open view knowledge popup
+                if let Some(i) = self.current_knowledge {
+                    let current_knowledge = &self.knowledge[i];
+
+                    self.popup = Some(
+                        ViewKnowledgePopup {
+                            vertical_scroll_state: ScrollbarState::new(
+                                current_knowledge.1.content.lines().count(),
+                            ),
+                            name: current_knowledge.0.to_owned(),
+                            content: current_knowledge.1.content.to_owned(),
+                            vertical_scroll: 0,
+                        }
+                        .into(),
+                    );
+                }
             }
 
             _ => {}
@@ -170,8 +296,10 @@ impl Component for KnowledgeComponent {
             // Action::Render => self.render_tick()?,
             _ => {}
         };
-        if let Some(popup) = self.add_knowledge_popup.as_mut() {
-            popup.update(action)?;
+        if let Some(popup) = self.popup.as_mut() {
+            if let Popup::AddKnowledge(p) = popup {
+                p.update(action)?;
+            }
         }
         Ok(None)
     }
@@ -213,9 +341,16 @@ impl Component for KnowledgeComponent {
             .highlight_spacing(HighlightSpacing::Always);
         frame.render_widget(list, body);
 
-        if let Some(popup) = self.add_knowledge_popup.as_mut() {
-            let area = AddKnowledge::popup_area(area, 60, 20);
-            popup.draw(frame, area)?;
+        if let Some(popup) = self.popup.as_mut() {
+            match popup {
+                Popup::AddKnowledge(p) => {
+                    let area = AddKnowledge::popup_area(area, 60, 20);
+                    p.draw(frame, area)?;
+                }
+                Popup::ViewKnowledge(p) => {
+                    p.draw(frame, area)?;
+                }
+            }
         }
         Ok(())
     }

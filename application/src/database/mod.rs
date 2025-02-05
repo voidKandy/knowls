@@ -4,12 +4,11 @@ pub mod query_builder;
 
 use config::{DatabaseConfig, Protocol};
 use knowls::{other_err, MainResult};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use surrealdb::{
     engine::any::{self, Any, IntoEndpoint},
     opt::auth::Root,
-    sql::Thing,
-    Surreal,
+    RecordId, Surreal,
 };
 
 #[derive(Debug)]
@@ -18,10 +17,11 @@ pub struct Database {
     pub client: Surreal<Any>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct Record {
-    #[allow(dead_code)]
-    id: Thing,
+#[derive(Debug, Deserialize, Serialize, PartialEq, PartialOrd, Eq)]
+pub struct Record<T> {
+    pub id: RecordId,
+    #[serde(flatten)]
+    pub obj: T,
 }
 
 fn root_credentials(cfg: &DatabaseConfig) -> Root {

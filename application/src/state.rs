@@ -1,4 +1,4 @@
-use crate::rpc::ConnectionInfo;
+use crate::{database::Record, rpc::ConnectionInfo};
 use knowls::{
     other_err,
     rpc::{HealthResponse, Request, Response, RpcMessage},
@@ -6,6 +6,7 @@ use knowls::{
 };
 use seraphic::ResponseWrapper;
 use std::{collections::HashMap, sync::Arc};
+use surrealdb::RecordId;
 use tokio::{net::TcpListener, sync::RwLock};
 
 use crate::database::{models::Knowledge, Database};
@@ -17,7 +18,7 @@ pub struct Application {
 
 pub struct State {
     pub database: Database,
-    pub knowledge: HashMap<surrealdb::RecordId, Knowledge>,
+    pub knowledge: HashMap<RecordId, Knowledge>,
     pub connections: HashMap<String, ConnectionInfo>,
 }
 

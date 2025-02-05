@@ -14,5 +14,5 @@ serde = {workspace=true}
 serde_json = {workspace=true}
 tracing = {workspace=true}
 seraphic = {workspace=true}
+lsp-types = {workspace=true}
 lsp-server = "0.7.6"
-lsp-types = "0.97.0"

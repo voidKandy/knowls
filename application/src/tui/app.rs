@@ -2,6 +2,7 @@ use std::{
     any::Any,
     fs::OpenOptions,
     io::Write,
+    path::PathBuf,
     process::Command,
     str::FromStr,
     sync::{Arc, LazyLock},
@@ -27,7 +28,7 @@ use tokio::{
 use tracing::{debug, info};
 
 use crate::{
-    database::{models::Knowledge, Database},
+    database::{models::Knowledge, Database, Record},
     state::State,
 };
 
@@ -70,33 +71,34 @@ use std::collections::HashMap;
 use surrealdb::RecordId;
 
 type Terminal = ratatui::Terminal<CrosstermBackend<std::io::Stdout>>;
-fn mock_state(database: Database) -> State {
+async fn mock_state(database: Database) -> State {
     let mut knowledge = HashMap::new();
 
     let mock_entries = vec![
         (
-            "knowledge:1",
+            PathBuf::from_str("testknowledge/1").unwrap(),
             "Zig is a general-purpose programming language.",
         ),
         (
-            "knowledge:2",
+            PathBuf::from_str("testknowledge/2").unwrap(),
             "Rust provides memory safety without garbage collection.",
         ),
         (
-            "knowledge:3",
+            PathBuf::from_str("testknowledge/3").unwrap(),
             "SurrealDB is a multi-model database for web applications.",
         ),
     ];
 
-    for (id, content) in mock_entries {
-        let record_id = RecordId::from_str(id).unwrap();
-        knowledge.insert(
-            record_id,
-            Knowledge {
-                id: id.to_string(),
-                content: content.to_string(),
-            },
-        );
+    for (path, content) in mock_entries {
+        let k = Knowledge::new(path, content);
+        let r: Option<Record<Knowledge>> = database
+            .client
+            .create("knowledge")
+            .content(k)
+            .await
+            .unwrap();
+        let r = r.unwrap();
+        knowledge.insert(r.id, r.obj);
     }
 
     State {
@@ -115,7 +117,7 @@ impl App {
     ) -> MainResult<Self> {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
         let rpc_listener = TcpListener::bind(rpc_listen_addr).await?;
-        let state = mock_state(database);
+        let state = mock_state(database).await;
         // let state = State::new(database);
         Ok(Self {
             editor_open: false,
@@ -201,7 +203,7 @@ impl App {
         loop {
             self.handle_events(&mut tui).await?;
             if !self.editor_open {
-                self.handle_actions(&mut tui)?;
+                self.handle_actions(&mut tui).await?;
             }
 
             self.state
@@ -271,7 +273,7 @@ impl App {
         Ok(())
     }
 
-    fn handle_actions(&mut self, tui: &mut Tui) -> Result<()> {
+    async fn handle_actions(&mut self, tui: &mut Tui) -> Result<()> {
         while let Ok(action) = self.action_rx.try_recv() {
             if action != Action::Tick && action != Action::Render {
                 debug!("{action:?}");
@@ -291,9 +293,21 @@ impl App {
                     tracing::warn!("going into editor mode");
                     self.run_editor(&mut tui.terminal, &buffer)
                         .expect("failed to run editor");
-                    // wil we wait here until we stop?
                     self.editor_open = false;
                     tracing::warn!("out of editor mode");
+                }
+                Action::InsertKnowledge(knowledge) => {
+                    let r: Option<Record<Knowledge>> = self
+                        .state
+                        .database
+                        .client
+                        .create("knowledge")
+                        .content(knowledge)
+                        .await?;
+                    let r = r.unwrap();
+                    self.state.knowledge.insert(r.id, r.obj);
+                    // this will not get passed to component action handler
+                    return Ok(());
                 }
                 Action::ChangeMode(mode) => {
                     self.mode = mode;
