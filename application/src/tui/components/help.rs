@@ -1,3 +1,4 @@
+use crate::state::State;
 use crate::tui::config::{key_event_to_string, Config};
 
 use super::{super::action::Action, ComponentId};
@@ -13,6 +14,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph, Widget, Wrap},
     Frame,
 };
+use surrealdb::sql::statements::CreateStatement;
 use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Debug, Clone)]
@@ -131,7 +133,7 @@ impl Component for HelpComponent {
         self.config = config;
         Ok(())
     }
-    fn update(&mut self, action: Action) -> Result<Option<Action>> {
+    fn update(&mut self, _state: &State, action: Action) -> Result<Option<Action>> {
         match action {
             Action::HelpDialogue(open) => {
                 self.open = open;

@@ -9,8 +9,11 @@ use ratatui::{
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::sync::mpsc::UnboundedSender;
 
+use crate::state::State;
+
 use super::{action::Action, config::Config, tui::Event};
 
+pub mod database;
 pub mod fps;
 pub mod help;
 pub mod home;
@@ -166,7 +169,7 @@ pub trait Component {
     /// # Returns
     ///
     /// * `Result<Option<Action>>` - An action to be processed or none.
-    fn update(&mut self, action: Action) -> Result<Option<Action>> {
+    fn update(&mut self, state: &State, action: Action) -> Result<Option<Action>> {
         let _ = action; // to appease clippy
         Ok(None)
     }

@@ -316,7 +316,7 @@ impl App {
                 _ => {}
             }
             for component in self.components.iter_mut() {
-                if let Some(action) = component.update(action.clone())? {
+                if let Some(action) = component.update(&self.state, action.clone())? {
                     self.action_tx.send(action)?
                 };
             }

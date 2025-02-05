@@ -2,6 +2,8 @@ use color_eyre::Result;
 use ratatui::{prelude::*, widgets::*};
 use tokio::sync::mpsc::UnboundedSender;
 
+use crate::state::State;
+
 use super::super::{action::Action, config::Config};
 use super::{Component, PageComponent};
 
@@ -36,7 +38,7 @@ impl Component for Home {
         Ok(())
     }
 
-    fn update(&mut self, action: Action) -> Result<Option<Action>> {
+    fn update(&mut self, _state: &State, action: Action) -> Result<Option<Action>> {
         match action {
             Action::Tick => {
                 // add any logic here that should run on every tick

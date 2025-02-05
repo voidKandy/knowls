@@ -5,7 +5,7 @@ use std::{
 };
 // use knowls::{MainErr, MainResult};
 use super::Component;
-use crate::tui::action::Action;
+use crate::{state::State, tui::action::Action};
 use ratatui::{
     layout::Rect,
     style::Color,
@@ -150,7 +150,11 @@ impl<A: UserInputPopupConfig> Component for UserInputPopup<A> {
         }
         Ok(None)
     }
-    fn update(&mut self, action: Action) -> color_eyre::eyre::Result<Option<Action>> {
+    fn update(
+        &mut self,
+        _state: &State,
+        action: Action,
+    ) -> color_eyre::eyre::Result<Option<Action>> {
         match action {
             Action::Tick => {
                 if let Some(instant) = match self.status {

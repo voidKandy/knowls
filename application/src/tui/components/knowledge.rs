@@ -5,6 +5,8 @@ use crate::{database::models::Knowledge, state::State, tui::config::Config};
 use color_eyre::owo_colors::OwoColorize;
 use color_eyre::Result;
 use crossterm::event::{KeyCode, KeyEventKind};
+use crossterm::style::StyledContent;
+use ratatui::style::Style;
 use ratatui::symbols::scrollbar;
 use ratatui::widgets::{Clear, Scrollbar, ScrollbarOrientation, ScrollbarState, Widget, Wrap};
 use ratatui::{
@@ -108,15 +110,13 @@ impl Component for ViewKnowledgePopup {
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
         // ensure that all cells under the popup are cleared to avoid leaking content
         // We add a little padding
-        let clear_area = {
-            let mut a = area.clone();
-            a.x += a.x / 10;
-            a.y += a.y / 10;
-            a
-        };
         let buf = frame.buffer_mut();
-        Clear.render(clear_area, buf);
-        let block = Block::new().title(self.name.clone()).borders(Borders::ALL);
+        Clear.render(area, buf);
+        let block = Block::new()
+            .title(self.name.clone())
+            .title_style(Style::new().yellow())
+            .style(Style::new())
+            .borders(Borders::ALL);
         Paragraph::new(self.content.to_owned())
             .wrap(Wrap { trim: true })
             .scroll((self.vertical_scroll as u16, 0))
@@ -290,15 +290,16 @@ impl Component for KnowledgeComponent {
         Ok(())
     }
 
-    fn update(&mut self, action: Action) -> Result<Option<Action>> {
+    fn update(&mut self, state: &State, action: Action) -> Result<Option<Action>> {
         match action {
             // Action::Tick => self.app_tick()?,
             // Action::Render => self.render_tick()?,
             _ => {}
         };
+        self.update_knowledge(state);
         if let Some(popup) = self.popup.as_mut() {
             if let Popup::AddKnowledge(p) = popup {
-                p.update(action)?;
+                p.update(state, action)?;
             }
         }
         Ok(None)
