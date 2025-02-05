@@ -152,14 +152,6 @@ impl From<&State> for KnowledgeComponent {
 }
 
 impl KnowledgeComponent {
-    pub fn update_knowledge(&mut self, state: &State) {
-        let knowledge = state
-            .knowledge
-            .iter()
-            .map(|(id, knowledge)| (id.to_string(), knowledge.clone()))
-            .collect();
-        self.knowledge = knowledge;
-    }
     fn cycle_knowledge(&mut self, asc: bool) {
         if self.knowledge.is_empty() {
             return;
@@ -296,7 +288,14 @@ impl Component for KnowledgeComponent {
             // Action::Render => self.render_tick()?,
             _ => {}
         };
-        self.update_knowledge(state);
+
+        let knowledge = state
+            .knowledge
+            .iter()
+            .map(|(id, knowledge)| (id.to_string(), knowledge.clone()))
+            .collect();
+        self.knowledge = knowledge;
+
         if let Some(popup) = self.popup.as_mut() {
             if let Popup::AddKnowledge(p) = popup {
                 p.update(state, action)?;
