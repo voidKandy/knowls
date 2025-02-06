@@ -17,11 +17,10 @@ pub enum Action {
     Render,
     Resize(u16, u16),
     /// open/close flag; true = open
-    HelpDialogue(bool),
+    // HelpDialogue(bool),
     ChangeMode(Mode),
     /// opens editor with given buffer
     OpenEditor(String),
-    ChangeBody(ComponentId),
     Suspend,
     Resume,
     Quit,

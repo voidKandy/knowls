@@ -8,7 +8,11 @@ use ratatui::style::{Color, Modifier, Style};
 use serde::{de::Deserializer, Deserialize};
 use tracing::error;
 
-use super::{action::Action, app::Mode};
+use super::{
+    action::Action,
+    app::Mode,
+    components::{Component, PageComponent},
+};
 
 #[derive(Clone, Debug, Deserialize, Default)]
 pub struct AppConfig {
@@ -76,7 +80,7 @@ impl Config {
         let mut cfg: Self = builder.build()?.try_deserialize()?;
 
         for (mode, default_bindings) in default_config.keybindings.iter() {
-            let user_bindings = cfg.keybindings.entry(*mode).or_default();
+            let user_bindings = cfg.keybindings.entry(mode.to_owned()).or_default();
             for (key, cmd) in default_bindings.iter() {
                 user_bindings
                     .entry(key.clone())
@@ -84,7 +88,7 @@ impl Config {
             }
         }
         for (mode, default_styles) in default_config.styles.iter() {
-            let user_styles = cfg.styles.entry(*mode).or_default();
+            let user_styles = cfg.styles.entry(mode.to_owned()).or_default();
             for (style_key, style) in default_styles.iter() {
                 user_styles.entry(style_key.clone()).or_insert(*style);
             }
@@ -129,20 +133,50 @@ impl Default for KeyBindings {
         let mut normal_mode_bindings = HashMap::new();
 
         normal_mode_bindings.insert(vec![parse_key_event("q").unwrap()], Action::Quit);
-        normal_mode_bindings.insert(
-            vec![parse_key_event("?").unwrap()],
-            Action::HelpDialogue(true),
-        );
+        // normal_mode_bindings.insert(
+        // vec![parse_key_event("?").unwrap()],
+        // Action::HelpDialogue(true),
+        // );
 
-        let mut help_mode_bindings = HashMap::new();
-        help_mode_bindings.insert(
-            vec![parse_key_event("q").unwrap()],
-            Action::HelpDialogue(false),
-        );
+        // let mut help_mode_bindings = HashMap::new();
+        // help_mode_bindings.insert(
+        //     vec![parse_key_event("q").unwrap()],
+        //     Action::HelpDialogue(false),
+        // );
 
         mode_map.insert(Mode::Normal, normal_mode_bindings);
-        mode_map.insert(Mode::Help, help_mode_bindings);
+        // mode_map.insert(Mode::Help, help_mode_bindings);
         Self(mode_map)
+    }
+}
+
+impl KeyBindings {
+    /// using methods provided by the `PageComponent` trait, this method will insert all the
+    /// component's bindings for it's mode as well as bindings for entering/exiting the mode
+    pub fn add_component_bindings(&mut self, component: &Box<dyn PageComponent>) {
+        let mode = Mode::Component(component.id());
+        let mut bindings = component.bindings();
+        bindings.insert(
+            vec![parse_key_event("q").unwrap()],
+            Action::ChangeMode(Mode::Normal),
+        );
+        self.0.insert(mode, bindings);
+        match self.0.get_mut(&Mode::Normal) {
+            Some(map) => {
+                map.insert(
+                    component.selection_keys(),
+                    Action::ChangeMode(Mode::Component(component.id())),
+                );
+            }
+            None => {
+                let mut map = HashMap::new();
+                map.insert(
+                    component.selection_keys(),
+                    Action::ChangeMode(Mode::Component(component.id())),
+                );
+                self.0.insert(Mode::Normal, map);
+            }
+        }
     }
 }
 

@@ -1,6 +1,7 @@
 use super::user_input::UserInputPopupConfig;
 use super::{super::action::Action, user_input::UserInputPopup};
 use super::{Component, PageComponent};
+use crate::tui::config::parse_key_event;
 use crate::{database::models::Knowledge, state::State, tui::config::Config};
 use color_eyre::owo_colors::OwoColorize;
 use color_eyre::Result;
@@ -16,6 +17,7 @@ use ratatui::{
     widgets::{Block, Borders, HighlightSpacing, List, ListItem, Paragraph},
     Frame,
 };
+use std::collections::HashMap;
 use std::{path::PathBuf, str::FromStr};
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -46,20 +48,6 @@ impl From<ViewKnowledgePopup> for Popup {
     }
 }
 
-impl Popup {
-    fn is_add(&self) -> bool {
-        if let Self::AddKnowledge(_) = self {
-            return true;
-        }
-        false
-    }
-    fn is_view(&self) -> bool {
-        if let Self::ViewKnowledge(_) = self {
-            return true;
-        }
-        false
-    }
-}
 type AddKnowledgePopup = UserInputPopup<AddKnowledge>;
 #[derive(Debug)]
 struct AddKnowledge;
@@ -187,11 +175,16 @@ impl KnowledgeComponent {
 }
 
 impl PageComponent for KnowledgeComponent {
-    fn position(&self) -> super::ComponentPosition {
-        super::ComponentPosition::Body {
-            id: "knowledge".into(),
-            selection_keys: vec!['k'],
-        }
+    fn id(&self) -> super::ComponentId {
+        "knowledge".into()
+    }
+    fn selection_keys(&self) -> Vec<crossterm::event::KeyEvent> {
+        vec![parse_key_event("k").unwrap()]
+    }
+    fn bindings(&self) -> std::collections::HashMap<Vec<crossterm::event::KeyEvent>, Action> {
+        let map = HashMap::new();
+
+        map
     }
 }
 

@@ -1,4 +1,4 @@
-use std::sync::LazyLock;
+use std::{collections::HashMap, sync::LazyLock};
 
 use color_eyre::Result;
 use crossterm::event::{KeyEvent, MouseEvent};
@@ -11,7 +11,11 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::state::State;
 
-use super::{action::Action, config::Config, tui::Event};
+use super::{
+    action::Action,
+    config::{Config, KeyBindings},
+    tui::Event,
+};
 
 pub mod database;
 pub mod fps;
@@ -20,7 +24,7 @@ pub mod home;
 pub mod knowledge;
 pub mod user_input;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub struct ComponentId(String);
 
 impl AsRef<str> for ComponentId {
@@ -63,13 +67,16 @@ pub const OUTER_VERTICAL_LAYOUT: LazyLock<Layout> =
 pub const BODY_LAYOUT: LazyLock<Layout> =
     LazyLock::new(|| Layout::horizontal([Constraint::Percentage(75), Constraint::Percentage(25)]));
 
-/// `PageComponent` is just a component that is loaded into the UI from the beginning of runtime
-/// Rendered by outermost Application
-
+/// Page components are rendered in the `body` of the application based on the current mode
 pub trait PageComponent: Component {
     /// Denote where on the screen the component should be rendered
     /// Used in `App::render()`
-    fn position(&self) -> ComponentPosition;
+    // fn position(&self) -> ComponentPosition;
+    fn id(&self) -> ComponentId;
+    /// Keys that can be pressed while the application is in Normal mode to switch to this page
+    fn selection_keys(&self) -> Vec<KeyEvent>;
+    /// Bindings that are used when this component is the current page
+    fn bindings(&self) -> HashMap<Vec<KeyEvent>, Action>;
 }
 
 /// `Component` is a trait that represents a visual and interactive element of the user interface.

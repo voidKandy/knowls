@@ -16,8 +16,11 @@ use crossterm::{
 };
 use knowls::MainResult;
 use ratatui::{
+    buffer::Buffer,
     prelude::{CrosstermBackend, Rect},
-    widgets::{Clear, Widget},
+    style::{Style, Stylize},
+    text::Span,
+    widgets::{Clear, Paragraph, Widget, WidgetRef},
     Frame,
 };
 use serde::{Deserialize, Serialize};
@@ -30,6 +33,7 @@ use tracing::{debug, info};
 use crate::{
     database::{models::Knowledge, Database, Record},
     state::State,
+    tui::config::key_event_to_string,
 };
 
 use super::{
@@ -47,7 +51,8 @@ pub struct App {
     tick_rate: f64,
     frame_rate: f64,
     editor_open: bool,
-    components: Vec<Box<dyn PageComponent>>,
+    components: Vec<Box<dyn Component>>,
+    page_components: Vec<Box<dyn PageComponent>>,
     current_body_component: ComponentId,
     should_quit: bool,
     should_suspend: bool,
@@ -60,11 +65,12 @@ pub struct App {
     state: State,
 }
 
-#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Mode {
     #[default]
     Normal,
     Help,
+    Component(ComponentId),
 }
 
 use std::collections::HashMap;
@@ -124,13 +130,13 @@ impl App {
             rpc_listener,
             tick_rate,
             frame_rate,
-            components: vec![
-                Box::new(Home::new()),
-                Box::new(FpsCounter::default()),
+            components: vec![Box::new(FpsCounter::default())],
+            page_components: vec![
                 Box::new(HelpComponent::default()),
+                Box::new(Home::new()),
                 Box::new(KnowledgeComponent::from(&state)),
             ],
-            current_body_component: Home::default().position().id().clone(),
+            current_body_component: Home::default().id().clone(),
             state,
             should_quit: false,
             should_suspend: false,
@@ -140,6 +146,40 @@ impl App {
             action_tx,
             action_rx,
         })
+    }
+
+    fn render_header(&self, area: Rect, buf: &mut Buffer) {
+        let normal_map = self
+            .config
+            .keybindings
+            .get(&crate::tui::app::Mode::Normal)
+            .expect("should have normal map");
+
+        let msg = normal_map
+            .iter()
+            .filter_map(|(k, v)| {
+                if let Action::ChangeMode(Mode::Component(id)) = v {
+                    Some((k, id))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<(&Vec<KeyEvent>, &ComponentId)>>()
+            .into_iter()
+            .fold(String::new(), |acc, (keys, id)| {
+                let mut all_keys_str = keys.iter().fold(String::from("["), |acc, k| {
+                    format!("{acc}{}, ", key_event_to_string(k))
+                });
+                // pop off trailing ', '
+                all_keys_str.pop();
+                all_keys_str.pop();
+                all_keys_str.push(']');
+
+                format!("{acc} {all_keys_str} for {}", id.as_ref())
+            });
+        let span = Span::styled(msg, Style::new().dim());
+        let paragraph = Paragraph::new(span).left_aligned();
+        paragraph.render_ref(area, buf);
     }
 
     fn run_editor(&mut self, terminal: &mut Terminal, buffer: &str) -> Result<()> {
@@ -175,24 +215,10 @@ impl App {
             .frame_rate(self.frame_rate);
         tui.enter()?;
 
-        for component in self.components.iter_mut() {
-            if let ComponentPosition::Body { selection_keys, id } = component.position() {
-                let normal_map = self
-                    .config
-                    .keybindings
-                    .get_mut(&Mode::Normal)
-                    .expect("normal map should exist");
-                for key in selection_keys {
-                    tracing::warn!("adding {key:#?}");
-                    let ret = normal_map.insert(
-                        vec![parse_key_event(&key.to_string()).unwrap()],
-                        Action::ChangeBody(id.clone()),
-                    );
-                    // it might be fine that this panics but im not sure
-                    assert!(ret.is_none(), "overwrote change body key!!");
-                }
-            }
+        for component in self.page_components.iter() {
+            self.config.keybindings.add_component_bindings(component);
         }
+
         for component in self.components.iter_mut() {
             component.register_action_handler(self.action_tx.clone())?;
             component.register_config_handler(self.config.clone())?;
@@ -311,8 +337,8 @@ impl App {
                 }
                 Action::ChangeMode(mode) => {
                     self.mode = mode;
+                    return Ok(());
                 }
-                Action::ChangeBody(ref id) => self.current_body_component = id.clone(),
                 _ => {}
             }
             for component in self.components.iter_mut() {
@@ -335,20 +361,25 @@ impl App {
         let [body, sidebar] = LazyLock::force(&BODY_LAYOUT).areas(body);
 
         tui.draw(|frame| {
-            for component in self.components.iter_mut() {
-                let (should_render, area) = match component.position() {
-                    ComponentPosition::Header(_) => (true, header),
-                    ComponentPosition::SideBar(_) => (true, sidebar),
-                    ComponentPosition::Popup(_) => (true, body),
-                    ComponentPosition::Body { id, .. } => (self.current_body_component == id, body),
-                };
-
-                if should_render {
-                    if let Err(err) = component.draw(frame, area) {
-                        let _ = self
-                            .action_tx
-                            .send(Action::Error(format!("Failed to draw: {:?}", err)));
+            self.render_header(header, frame.buffer_mut());
+            for component in self.page_components.iter_mut() {
+                match &self.mode {
+                    // page components are only rendered if they are the current mode
+                    Mode::Component(id) if id == &component.id() => {
+                        if let Err(err) = component.draw(frame, body) {
+                            let _ = self
+                                .action_tx
+                                .send(Action::Error(format!("Failed to draw: {:?}", err)));
+                        }
                     }
+                    _ => {}
+                };
+            }
+            for component in self.components.iter_mut() {
+                if let Err(err) = component.draw(frame, sidebar) {
+                    let _ = self
+                        .action_tx
+                        .send(Action::Error(format!("Failed to draw: {:?}", err)));
                 }
             }
         })?;

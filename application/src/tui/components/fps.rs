@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::{collections::HashMap, time::Instant};
 
 use color_eyre::Result;
 use ratatui::{
@@ -68,11 +68,7 @@ impl FpsCounter {
         Ok(())
     }
 }
-impl PageComponent for FpsCounter {
-    fn position(&self) -> super::ComponentPosition {
-        super::ComponentPosition::SideBar("fps".into())
-    }
-}
+
 impl Component for FpsCounter {
     fn update(&mut self, _state: &State, action: Action) -> Result<Option<Action>> {
         match action {

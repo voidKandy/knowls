@@ -1,8 +1,11 @@
+use std::collections::HashMap;
+
 use color_eyre::Result;
 use ratatui::{prelude::*, widgets::*};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::state::State;
+use crate::tui::config::parse_key_event;
 
 use super::super::{action::Action, config::Config};
 use super::{Component, PageComponent};
@@ -20,12 +23,22 @@ impl Home {
 }
 
 impl PageComponent for Home {
-    fn position(&self) -> super::ComponentPosition {
-        super::ComponentPosition::Body {
-            id: "home".into(),
-            selection_keys: vec!['h'],
-        }
+    fn id(&self) -> super::ComponentId {
+        "home".into()
     }
+    fn selection_keys(&self) -> Vec<crossterm::event::KeyEvent> {
+        vec![parse_key_event("h").unwrap()]
+    }
+    fn bindings(&self) -> std::collections::HashMap<Vec<crossterm::event::KeyEvent>, Action> {
+        let map = HashMap::new();
+        map
+    }
+    // fn position(&self) -> super::ComponentPosition {
+    //     super::ComponentPosition::Body {
+    //         id: "home".into(),
+    //         selection_keys: vec!['h'],
+    //     }
+    // }
 }
 impl Component for Home {
     fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {

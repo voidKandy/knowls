@@ -1,5 +1,8 @@
+use std::collections::HashMap;
+
 use crate::state::State;
-use crate::tui::config::{key_event_to_string, Config};
+use crate::tui::app::Mode;
+use crate::tui::config::{key_event_to_string, parse_key_event, Config};
 
 use super::{super::action::Action, ComponentId};
 use super::{Component, PageComponent};
@@ -19,7 +22,6 @@ use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Debug, Clone)]
 pub struct HelpComponent {
-    open: bool,
     command_tx: Option<UnboundedSender<Action>>,
     config: Config,
 }
@@ -27,7 +29,6 @@ pub struct HelpComponent {
 impl Default for HelpComponent {
     fn default() -> Self {
         Self {
-            open: false,
             command_tx: None,
             config: Config::default(),
         }
@@ -57,37 +58,6 @@ impl Widget for HelpPopup<'_> {
 }
 
 impl HelpComponent {
-    /// For displaying all keys that will change the body of the application
-    fn body_change_message(&self) -> String {
-        let normal_map = self
-            .config
-            .keybindings
-            .get(&crate::tui::app::Mode::Normal)
-            .expect("should have normal map");
-
-        normal_map
-            .iter()
-            .filter_map(|(k, v)| {
-                if let Action::ChangeBody(id) = v {
-                    Some((k, id))
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<(&Vec<KeyEvent>, &ComponentId)>>()
-            .into_iter()
-            .fold(String::new(), |acc, (keys, id)| {
-                let mut all_keys_str = keys.iter().fold(String::from("["), |acc, k| {
-                    format!("{acc}{}, ", key_event_to_string(k))
-                });
-                // pop off trailing ', '
-                all_keys_str.pop();
-                all_keys_str.pop();
-                all_keys_str.push(']');
-
-                format!("{acc} {all_keys_str} for {}", id.as_ref())
-            })
-    }
     fn popup(&self) -> HelpPopup {
         tracing::warn!("keybindings for help popup: {:#?}", self.config.keybindings);
         let text = self
@@ -116,13 +86,23 @@ impl HelpComponent {
 }
 
 impl PageComponent for HelpComponent {
-    fn position(&self) -> super::ComponentPosition {
-        let id = "help".into();
-        if self.open {
-            return super::ComponentPosition::Popup(id);
-        }
-        super::ComponentPosition::Header(id)
+    fn id(&self) -> ComponentId {
+        "help".into()
     }
+    fn selection_keys(&self) -> Vec<KeyEvent> {
+        vec![parse_key_event("?").unwrap()]
+    }
+    fn bindings(&self) -> std::collections::HashMap<Vec<KeyEvent>, Action> {
+        let map = HashMap::new();
+        map
+    }
+    // fn position(&self) -> super::ComponentPosition {
+    //     let id = "help".into();
+    //     if self.open {
+    //         return super::ComponentPosition::Popup(id);
+    //     }
+    //     super::ComponentPosition::Header(id)
+    // }
 }
 impl Component for HelpComponent {
     fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
@@ -135,14 +115,9 @@ impl Component for HelpComponent {
     }
     fn update(&mut self, _state: &State, action: Action) -> Result<Option<Action>> {
         match action {
-            Action::HelpDialogue(open) => {
-                self.open = open;
-                if open {
-                    return Ok(Some(Action::ChangeMode(crate::tui::app::Mode::Help)));
-                } else {
-                    return Ok(Some(Action::ChangeMode(crate::tui::app::Mode::Normal)));
-                }
-            }
+            // Action::HelpDialogue(open) => {
+            //     return Ok(Some(Action::ChangeMode(crate::tui::app::Mode::Help)));
+            // }
 
             // Action::Tick => self.app_tick()?,
             // Action::Render => self.render_tick()?,
@@ -152,17 +127,8 @@ impl Component for HelpComponent {
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
-        let [top, _] = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
-        if self.open {
-            self.popup().render(area, frame.buffer_mut());
-        } else {
-            let span = Span::styled(
-                format!("Press ? for help | {}", self.body_change_message()),
-                Style::new().dim(),
-            );
-            let paragraph = Paragraph::new(span).left_aligned();
-            frame.render_widget(paragraph, top);
-        }
+        // let [top, _] = Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
+        self.popup().render(area, frame.buffer_mut());
         Ok(())
     }
 }
