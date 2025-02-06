@@ -28,7 +28,7 @@ use tokio::{
     net::{TcpListener, ToSocketAddrs},
     sync::mpsc,
 };
-use tracing::{debug, info};
+use tracing::{debug, info, instrument::WithSubscriber};
 
 use crate::{
     database::{models::Knowledge, Database, Record},
@@ -52,8 +52,8 @@ pub struct App {
     frame_rate: f64,
     editor_open: bool,
     components: Vec<Box<dyn Component>>,
+    help: HelpComponent,
     page_components: Vec<Box<dyn PageComponent>>,
-    current_body_component: ComponentId,
     should_quit: bool,
     should_suspend: bool,
     mode: Mode,
@@ -69,7 +69,7 @@ pub struct App {
 pub enum Mode {
     #[default]
     Normal,
-    Help,
+    Help(Option<ComponentId>),
     Component(ComponentId),
 }
 
@@ -130,13 +130,12 @@ impl App {
             rpc_listener,
             tick_rate,
             frame_rate,
+            help: HelpComponent::default(),
             components: vec![Box::new(FpsCounter::default())],
             page_components: vec![
-                Box::new(HelpComponent::default()),
                 Box::new(Home::new()),
                 Box::new(KnowledgeComponent::from(&state)),
             ],
-            current_body_component: Home::default().id().clone(),
             state,
             should_quit: false,
             should_suspend: false,
@@ -166,7 +165,7 @@ impl App {
             })
             .collect::<Vec<(&Vec<KeyEvent>, &ComponentId)>>()
             .into_iter()
-            .fold(String::new(), |acc, (keys, id)| {
+            .fold(String::from("? for help | "), |acc, (keys, id)| {
                 let mut all_keys_str = keys.iter().fold(String::from("["), |acc, k| {
                     format!("{acc}{}, ", key_event_to_string(k))
                 });
@@ -218,6 +217,10 @@ impl App {
         for component in self.page_components.iter() {
             self.config.keybindings.add_component_bindings(component);
         }
+
+        self.help.register_action_handler(self.action_tx.clone())?;
+        self.help.register_config_handler(self.config.clone())?;
+        self.help.init(tui.size()?)?;
 
         for component in self.components.iter_mut() {
             component.register_action_handler(self.action_tx.clone())?;
@@ -362,19 +365,30 @@ impl App {
 
         tui.draw(|frame| {
             self.render_header(header, frame.buffer_mut());
-            for component in self.page_components.iter_mut() {
-                match &self.mode {
-                    // page components are only rendered if they are the current mode
-                    Mode::Component(id) if id == &component.id() => {
-                        if let Err(err) = component.draw(frame, body) {
-                            let _ = self
-                                .action_tx
-                                .send(Action::Error(format!("Failed to draw: {:?}", err)));
-                        }
+            match &self.mode {
+                // page components are only rendered if they are the current mode
+                Mode::Component(id) => {
+                    let component = self
+                        .page_components
+                        .iter_mut()
+                        .find(|c| c.id() == *id)
+                        .expect("could not get component");
+                    if let Err(err) = component.draw(frame, body) {
+                        let _ = self
+                            .action_tx
+                            .send(Action::Error(format!("Failed to draw: {:?}", err)));
                     }
-                    _ => {}
-                };
-            }
+                }
+                Mode::Help(comp) => {
+                    self.help.component_mode = comp.clone();
+                    if let Err(err) = self.help.draw(frame, body) {
+                        let _ = self
+                            .action_tx
+                            .send(Action::Error(format!("Failed to draw: {:?}", err)));
+                    }
+                }
+                _ => {}
+            };
             for component in self.components.iter_mut() {
                 if let Err(err) = component.draw(frame, sidebar) {
                     let _ = self

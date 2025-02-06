@@ -133,19 +133,19 @@ impl Default for KeyBindings {
         let mut normal_mode_bindings = HashMap::new();
 
         normal_mode_bindings.insert(vec![parse_key_event("q").unwrap()], Action::Quit);
-        // normal_mode_bindings.insert(
-        // vec![parse_key_event("?").unwrap()],
-        // Action::HelpDialogue(true),
-        // );
+        normal_mode_bindings.insert(
+            vec![parse_key_event("?").unwrap()],
+            Action::ChangeMode(Mode::Help(None)),
+        );
 
-        // let mut help_mode_bindings = HashMap::new();
-        // help_mode_bindings.insert(
-        //     vec![parse_key_event("q").unwrap()],
-        //     Action::HelpDialogue(false),
-        // );
+        let mut help_mode_bindings = HashMap::new();
+        help_mode_bindings.insert(
+            vec![parse_key_event("q").unwrap()],
+            Action::ChangeMode(Mode::Normal),
+        );
 
         mode_map.insert(Mode::Normal, normal_mode_bindings);
-        // mode_map.insert(Mode::Help, help_mode_bindings);
+        mode_map.insert(Mode::Help(None), help_mode_bindings);
         Self(mode_map)
     }
 }
@@ -160,7 +160,20 @@ impl KeyBindings {
             vec![parse_key_event("q").unwrap()],
             Action::ChangeMode(Mode::Normal),
         );
+        bindings.insert(
+            vec![parse_key_event("?").unwrap()],
+            Action::ChangeMode(Mode::Help(Some(component.id()))),
+        );
         self.0.insert(mode, bindings);
+
+        let mut help_mode_bindings = HashMap::new();
+        help_mode_bindings.insert(
+            vec![parse_key_event("q").unwrap()],
+            Action::ChangeMode(Mode::Component(component.id())),
+        );
+        self.0
+            .insert(Mode::Help(Some(component.id())), help_mode_bindings);
+
         match self.0.get_mut(&Mode::Normal) {
             Some(map) => {
                 map.insert(

@@ -16,8 +16,6 @@ pub enum Action {
     Tick,
     Render,
     Resize(u16, u16),
-    /// open/close flag; true = open
-    // HelpDialogue(bool),
     ChangeMode(Mode),
     /// opens editor with given buffer
     OpenEditor(String),

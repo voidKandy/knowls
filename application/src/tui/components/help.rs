@@ -1,29 +1,27 @@
 use std::collections::HashMap;
 
+use super::Component;
+use super::{super::action::Action, ComponentId};
 use crate::state::State;
 use crate::tui::app::Mode;
-use crate::tui::config::{key_event_to_string, parse_key_event, Config};
-
-use super::{super::action::Action, ComponentId};
-use super::{Component, PageComponent};
-use color_eyre::owo_colors::OwoColorize;
+use crate::tui::config::{key_event_to_string, Config};
 use color_eyre::Result;
 use crossterm::event::KeyEvent;
 use ratatui::{
     buffer::Buffer,
-    layout::{Constraint, Layout, Rect},
+    layout::Rect,
     style::{Style, Stylize},
-    text::{Span, Text},
+    text::Text,
     widgets::{Block, Borders, Clear, Paragraph, Widget, Wrap},
     Frame,
 };
-use surrealdb::sql::statements::CreateStatement;
 use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Debug, Clone)]
 pub struct HelpComponent {
     command_tx: Option<UnboundedSender<Action>>,
     config: Config,
+    pub component_mode: Option<ComponentId>,
 }
 
 impl Default for HelpComponent {
@@ -31,6 +29,7 @@ impl Default for HelpComponent {
         Self {
             command_tx: None,
             config: Config::default(),
+            component_mode: None,
         }
     }
 }
@@ -60,24 +59,24 @@ impl Widget for HelpPopup<'_> {
 impl HelpComponent {
     fn popup(&self) -> HelpPopup {
         tracing::warn!("keybindings for help popup: {:#?}", self.config.keybindings);
+        let mode = match self.component_mode.as_ref() {
+            Some(id) => Mode::Component(id.clone()),
+            None => Mode::Normal,
+        };
         let text = self
             .config
             .keybindings
+            .get(&mode)
+            .unwrap_or(&HashMap::<Vec<KeyEvent>, Action>::new())
             .iter()
-            .fold(String::new(), |acc, (mode, map)| {
+            .fold(format!("==={mode:?}===\n"), |inner_acc, (keys, action)| {
                 format!(
-                    "{acc}{}",
-                    map.iter()
-                        .fold(format!("==={mode:#?}===\n"), |inner_acc, (keys, action)| {
-                            format!(
-                                "{inner_acc}{}\n",
-                                keys.iter()
-                                    .fold(format!("---{action:?}---"), |in_inner_acc, key| {
-                                        format!("{in_inner_acc}\n{}\n", key_event_to_string(key))
-                                    })
-                                    .to_string()
-                            )
+                    "{inner_acc}{}\n",
+                    keys.iter()
+                        .fold(format!("---{action:?}---"), |in_inner_acc, key| {
+                            format!("{in_inner_acc}\n{}\n", key_event_to_string(key))
                         })
+                        .to_string()
                 )
             });
         let content = Text::raw(text);
@@ -85,25 +84,6 @@ impl HelpComponent {
     }
 }
 
-impl PageComponent for HelpComponent {
-    fn id(&self) -> ComponentId {
-        "help".into()
-    }
-    fn selection_keys(&self) -> Vec<KeyEvent> {
-        vec![parse_key_event("?").unwrap()]
-    }
-    fn bindings(&self) -> std::collections::HashMap<Vec<KeyEvent>, Action> {
-        let map = HashMap::new();
-        map
-    }
-    // fn position(&self) -> super::ComponentPosition {
-    //     let id = "help".into();
-    //     if self.open {
-    //         return super::ComponentPosition::Popup(id);
-    //     }
-    //     super::ComponentPosition::Header(id)
-    // }
-}
 impl Component for HelpComponent {
     fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
         self.command_tx = Some(tx);
