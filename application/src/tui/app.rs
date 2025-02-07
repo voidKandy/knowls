@@ -293,7 +293,6 @@ impl App {
                 )))?,
                 Ok(None) => {}
             }
-            // return Ok(());
         }
 
         let Some(keymap) = self.config.keybindings.get(&self.mode) else {
@@ -363,6 +362,11 @@ impl App {
                 _ => {}
             }
             for component in self.components.iter_mut() {
+                if let Some(action) = component.update(&self.state, action.clone())? {
+                    self.action_tx.send(action)?
+                };
+            }
+            for component in self.page_components.iter_mut() {
                 if let Some(action) = component.update(&self.state, action.clone())? {
                     self.action_tx.send(action)?
                 };
