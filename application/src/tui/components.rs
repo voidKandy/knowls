@@ -17,6 +17,7 @@ use super::{
     tui::Event,
 };
 
+pub mod connections;
 pub mod database;
 pub mod fps;
 pub mod help;

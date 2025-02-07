@@ -3,8 +3,9 @@ use knowls::{other_err, rpc::RpcMessage, MainResult};
 use seraphic::packet::{PacketRead, TcpPacket};
 use std::{
     collections::VecDeque,
+    net::SocketAddr,
     sync::{atomic::AtomicBool, Arc},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::net::TcpListener;
 use tokio::{
@@ -59,6 +60,7 @@ pub struct ConnectionThreadState {
 /// Information of connection stored on application main thread
 pub(super) struct ConnectionInfo {
     pub handle: JoinHandle<()>,
+    pub established: Instant,
     pub incoming: SharedMessageQueue,
     pub incoming_pending: Arc<AtomicBool>,
     pub outbound: SharedMessageQueue,
@@ -112,6 +114,7 @@ impl ConnectionThreadState {
 
     /// Spins up handle and returns connection info
     pub fn spawn_handle(stream: TcpStream) -> ConnectionInfo {
+        let established = Instant::now();
         let incoming = Arc::new(RwLock::new(VecDeque::new()));
         let outbound = Arc::new(RwLock::new(VecDeque::new()));
         let incoming_pending = Arc::new(AtomicBool::new(false));
@@ -165,6 +168,7 @@ impl ConnectionThreadState {
 
         ConnectionInfo {
             incoming,
+            established,
             outbound,
             handle,
             outbound_pending,

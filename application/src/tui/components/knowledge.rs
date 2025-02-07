@@ -20,6 +20,7 @@ use ratatui::{
 };
 use std::collections::HashMap;
 use std::{path::PathBuf, str::FromStr};
+use surrealdb::RecordId;
 use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Debug)]
@@ -27,8 +28,7 @@ pub struct KnowledgeComponent {
     command_tx: Option<UnboundedSender<Action>>,
     config: Config,
     bindings: PageComponentBindings,
-    // String is ID of the Knowledge
-    knowledge: Vec<(String, Knowledge)>,
+    knowledge: Vec<(RecordId, Knowledge)>,
     current_knowledge: Option<usize>,
     popup: Option<Popup>,
 }
@@ -135,7 +135,7 @@ impl From<&State> for KnowledgeComponent {
             knowledge: value
                 .knowledge
                 .iter()
-                .map(|(id, knowledge)| (id.to_string(), knowledge.clone()))
+                .map(|(id, knowledge)| (id.to_owned(), knowledge.clone()))
                 .collect(),
         }
     }
@@ -256,7 +256,7 @@ impl PageComponent for KnowledgeComponent {
                             vertical_scroll_state: ScrollbarState::new(
                                 current_knowledge.1.content.lines().count(),
                             ),
-                            name: current_knowledge.0.to_owned(),
+                            name: current_knowledge.1.kid.to_string(),
                             content: current_knowledge.1.content.to_owned(),
                             vertical_scroll: 0,
                         }
@@ -337,7 +337,7 @@ impl Component for KnowledgeComponent {
         let knowledge = state
             .knowledge
             .iter()
-            .map(|(id, knowledge)| (id.to_string(), knowledge.clone()))
+            .map(|(id, knowledge)| (id.to_owned(), knowledge.clone()))
             .collect();
         self.knowledge = knowledge;
 
@@ -352,18 +352,20 @@ impl Component for KnowledgeComponent {
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
         let [header, body] =
             Layout::vertical([Constraint::Length(1), Constraint::Min(0)]).areas(area);
-        let paragraph = Paragraph::new("=== Knowledge ===").left_aligned();
+        let paragraph = Paragraph::new("=== Knowledge ===")
+            .style(Style::new().green().bold())
+            .centered();
         frame.render_widget(paragraph, header);
 
         let block = Block::new()
-            .title(Line::raw("Entries").centered())
+            .title(Line::raw("Entries"))
             .borders(Borders::ALL);
 
         let items: Vec<ListItem> = self
             .knowledge
             .iter()
             .enumerate()
-            .map(|(i, (id, _knowledge))| {
+            .map(|(i, (_id, knowledge))| {
                 let mut color = Color::Cyan;
 
                 if self
@@ -374,7 +376,7 @@ impl Component for KnowledgeComponent {
                     color = Color::LightMagenta;
                 }
 
-                ListItem::from(id.to_owned()).bg(color)
+                ListItem::from(knowledge.kid.to_string()).bg(color)
             })
             .collect();
 

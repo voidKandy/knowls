@@ -70,14 +70,14 @@ impl Component for DatabaseComponent {
 
         if let OneOf::Left(ref mut throbber_state) = self.healthy {
             let full = throbber_widgets_tui::Throbber::default()
-                .label("Running...")
+                .label("Getting health status...")
                 .style(ratatui::style::Style::default().fg(ratatui::style::Color::Cyan))
                 .throbber_style(
                     ratatui::style::Style::default()
                         .fg(ratatui::style::Color::Red)
                         .add_modifier(ratatui::style::Modifier::BOLD),
                 )
-                .throbber_set(throbber_widgets_tui::CLOCK)
+                .throbber_set(throbber_widgets_tui::BRAILLE_EIGHT)
                 .use_type(throbber_widgets_tui::WhichUse::Spin);
             frame.render_stateful_widget(full, throbber, throbber_state);
         }

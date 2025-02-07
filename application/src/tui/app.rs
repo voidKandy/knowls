@@ -1,15 +1,16 @@
 use super::{
     action::Action,
     components::{
-        database::DatabaseComponent, fps::FpsCounter, help::HelpComponent, home::Home,
-        knowledge::KnowledgeComponent, Component, ComponentId, PageComponent, BODY_LAYOUT,
-        OUTER_VERTICAL_LAYOUT,
+        connections::ConnectionsComponent, database::DatabaseComponent, fps::FpsCounter,
+        help::HelpComponent, home::Home, knowledge::KnowledgeComponent, Component, ComponentId,
+        PageComponent, BODY_LAYOUT, OUTER_VERTICAL_LAYOUT,
     },
     config::Config,
     tui::{Event, Tui},
 };
 use crate::{
     database::{models::Knowledge, Database, Record},
+    rpc::ConnectionInfo,
     state::State,
     tui::config::key_event_to_string,
 };
@@ -44,9 +45,11 @@ pub struct App {
     tick_rate: f64,
     frame_rate: f64,
     editor_open: bool,
+    /// Component to be rendered in `Normal` Mode
+    home: Home,
+    help: HelpComponent,
     /// Components rendered in the sidebar
     components: Vec<Box<dyn Component>>,
-    help: HelpComponent,
     /// Components rendered in the body
     page_components: Vec<Box<dyn PageComponent>>,
     should_quit: bool,
@@ -122,14 +125,15 @@ impl App {
             rpc_listener,
             tick_rate,
             frame_rate,
+            home: Home::new(),
             help: HelpComponent::default(),
             components: vec![
                 Box::new(FpsCounter::default()),
                 Box::new(DatabaseComponent::from(&state)),
             ],
             page_components: vec![
-                Box::new(Home::new()),
                 Box::new(KnowledgeComponent::from(&state)),
+                Box::new(ConnectionsComponent::from(&state)),
             ],
             state,
             should_quit: false,
@@ -404,7 +408,13 @@ impl App {
                             .send(Action::Error(format!("Failed to draw: {:?}", err)));
                     }
                 }
-                _ => {}
+                Mode::Normal => {
+                    if let Err(err) = self.home.draw(frame, body) {
+                        let _ = self
+                            .action_tx
+                            .send(Action::Error(format!("Failed to draw: {:?}", err)));
+                    }
+                }
             };
 
             let constraints = (0..self.components.len())

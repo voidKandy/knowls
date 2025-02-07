@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use surrealdb::{sql::Thing, RecordId};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum KnowledgeId {
