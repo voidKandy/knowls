@@ -11,15 +11,10 @@ use tokio::{net::TcpListener, sync::RwLock};
 
 use crate::database::{models::Knowledge, Database};
 
-pub struct Application {
-    listener: TcpListener,
-    state: Arc<RwLock<State>>,
-}
-
 pub struct State {
     pub database: Database,
     pub knowledge: HashMap<RecordId, Knowledge>,
-    pub connections: HashMap<String, ConnectionInfo>,
+    pub connections: Arc<RwLock<HashMap<String, ConnectionInfo>>>,
 }
 
 impl State {
@@ -27,7 +22,7 @@ impl State {
         Self {
             database,
             knowledge: HashMap::new(),
-            connections: HashMap::new(),
+            connections: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -35,7 +30,7 @@ impl State {
     /// 1. Drops any connections who's threads have finished
     /// 2. Goes through any connection with pending RPC requests and handles them
     pub async fn manage_connections(&mut self) -> MainResult<()> {
-        self.connections.retain(|c, info| {
+        self.connections.write().await.retain(|c, info| {
             if info.handle.is_finished() {
                 tracing::warn!("dropping connection to: {c:#?}");
                 false
@@ -44,7 +39,7 @@ impl State {
             }
         });
 
-        let conns_to_handle = self.all_connection_keys_with_incoming();
+        let conns_to_handle = self.all_connection_keys_with_incoming()?;
 
         if !conns_to_handle.is_empty() {
             tracing::warn!(
@@ -55,6 +50,8 @@ impl State {
                 tracing::warn!("handling messages for {addr:#?}");
                 let mut info = self
                     .connections
+                    .write()
+                    .await
                     .remove(&addr)
                     .expect("somehow got an invalid connection key?");
 
@@ -74,7 +71,7 @@ impl State {
                 info.incoming_pending
                     .store(false, std::sync::atomic::Ordering::Relaxed);
 
-                self.connections.insert(addr, info);
+                self.connections.write().await.insert(addr, info);
             }
         }
         Ok(())
@@ -89,8 +86,10 @@ impl State {
         }
     }
 
-    fn all_connection_keys_with_incoming(&self) -> Vec<String> {
-        self.connections
+    fn all_connection_keys_with_incoming(&self) -> MainResult<Vec<String>> {
+        Ok(self
+            .connections
+            .try_read()?
             .iter()
             .fold(vec![], |mut acc, (addr, info)| {
                 if info
@@ -100,6 +99,6 @@ impl State {
                     acc.push(addr.to_string())
                 }
                 acc
-            })
+            }))
     }
 }

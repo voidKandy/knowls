@@ -9,7 +9,7 @@ async fn main() {
     LazyLock::force(&trace::TRACING);
     tracing::warn!("spinning up LSP Server");
     trace_panics!();
-    let addr = "127.0.0.1:1598";
-    let server = Server::init(addr).expect("failed to init server");
+    let addr = "127.0.0.1:8888";
+    let mut server = Server::init(addr).await.expect("failed to init server");
     server.main_loop().await.unwrap();
 }

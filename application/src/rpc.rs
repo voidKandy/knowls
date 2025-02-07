@@ -29,11 +29,11 @@ impl From<TcpListener> for RpcListener {
 impl RpcListener {
     /// Awaits an incoming connection and converts it to a `ConnectionInfo`
     /// This will spawn the thread that handles the individual connection
-    pub async fn accept(&mut self) -> MainResult<ConnectionInfo> {
+    pub async fn accept(&mut self) -> MainResult<(SocketAddr, ConnectionInfo)> {
         match self.0.accept().await {
             Ok((stream, addr)) => {
                 tracing::warn!("connected: {addr:#?}");
-                Ok(ConnectionThreadState::spawn_handle(stream))
+                Ok((addr, ConnectionThreadState::spawn_handle(stream)))
             }
             Err(e) => {
                 let msg = format!("couldn't accept connection: {e:?}");

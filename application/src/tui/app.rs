@@ -10,7 +10,7 @@ use super::{
 };
 use crate::{
     database::{models::Knowledge, Database, Record},
-    rpc::ConnectionInfo,
+    rpc::{ConnectionInfo, RpcListener},
     state::State,
     tui::config::key_event_to_string,
 };
@@ -20,7 +20,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
-use knowls::MainResult;
+use knowls::{util::oneof::OneOf, MainResult};
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout},
@@ -30,15 +30,40 @@ use ratatui::{
     widgets::{Paragraph, WidgetRef},
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 use std::{
     fs::OpenOptions, io::Write, path::PathBuf, process::Command, str::FromStr, sync::LazyLock,
 };
 use tokio::{
     net::{TcpListener, ToSocketAddrs},
-    sync::mpsc,
+    sync::{mpsc, RwLock},
+    task::JoinHandle,
 };
 use tracing::{debug, info};
+
+pub struct RpcListenerContext {
+    listener: RpcListener,
+    connections: Arc<RwLock<HashMap<String, ConnectionInfo>>>,
+}
+
+impl RpcListenerContext {
+    async fn spawn_handle(mut self) -> JoinHandle<()> {
+        tokio::spawn(async move {
+            loop {
+                match self.listener.accept().await {
+                    Ok((addr, conn)) => {
+                        let mut w = self.connections.write().await;
+                        w.insert(addr.to_string(), conn);
+                    }
+                    Err(e) => {
+                        // probably shouldn't panic
+                        panic!("error with listening thread: {e:#?}");
+                    }
+                }
+            }
+        })
+    }
+}
 
 pub struct App {
     config: Config,
@@ -59,7 +84,7 @@ pub struct App {
     action_tx: mpsc::UnboundedSender<Action>,
     action_rx: mpsc::UnboundedReceiver<Action>,
 
-    rpc_listener: TcpListener,
+    rpc_listener_thread: JoinHandle<()>,
     state: State,
 }
 
@@ -105,7 +130,7 @@ async fn mock_state(database: Database) -> State {
     State {
         database,
         knowledge,
-        connections: HashMap::new(),
+        connections: Arc::new(RwLock::new(HashMap::new())),
     }
 }
 
@@ -117,12 +142,19 @@ impl App {
         database: Database,
     ) -> MainResult<Self> {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
-        let rpc_listener = TcpListener::bind(rpc_listen_addr).await?;
+        let listener = TcpListener::bind(rpc_listen_addr).await?.into();
         let state = mock_state(database).await;
+        // it might be BAD to have this handle spawned in the `new` method
+        let rpc_listener_thread = RpcListenerContext {
+            listener,
+            connections: Arc::clone(&state.connections),
+        }
+        .spawn_handle()
+        .await;
         // let state = State::new(database);
         Ok(Self {
             editor_open: false,
-            rpc_listener,
+            rpc_listener_thread,
             tick_rate,
             frame_rate,
             home: Home::new(),
@@ -144,6 +176,63 @@ impl App {
             action_tx,
             action_rx,
         })
+    }
+
+    pub async fn run(&mut self) -> Result<()> {
+        let mut tui = Tui::new()?
+            // .mouse(true) // uncomment this line to enable mouse support
+            .tick_rate(self.tick_rate)
+            .frame_rate(self.frame_rate);
+        tui.enter()?;
+
+        for component in self.page_components.iter() {
+            self.config.add_component_bindings(component);
+        }
+
+        self.help.register_action_handler(self.action_tx.clone())?;
+        self.help.register_config_handler(self.config.clone())?;
+        self.help.init(tui.size()?)?;
+
+        for component in self.components.iter_mut() {
+            component.register_action_handler(self.action_tx.clone())?;
+            component.register_config_handler(self.config.clone())?;
+            component.init(tui.size()?)?;
+        }
+
+        let action_tx = self.action_tx.clone();
+
+        loop {
+            // tokio::select! {
+            //     result =  => {
+            //         result?
+            //     },
+            //     Ok((addr, conn_info)) = self.rpc_listener.accept() => {
+            //         self.state.connections.insert(addr.to_string(),conn_info);
+            //     },
+            // }
+
+            self.handle_events(&mut tui).await?;
+            if !self.editor_open {
+                self.handle_actions(&mut tui).await?;
+            }
+
+            self.state
+                .manage_connections()
+                .await
+                .expect("failed to manage connections");
+            if self.should_suspend {
+                tui.suspend()?;
+                action_tx.send(Action::Resume)?;
+                action_tx.send(Action::ClearScreen)?;
+                // tui.mouse(true);
+                tui.enter()?;
+            } else if self.should_quit {
+                tui.stop()?;
+                break;
+            }
+        }
+        tui.exit()?;
+        Ok(())
     }
 
     fn render_header(&self, area: Rect, buf: &mut Buffer) {
@@ -203,53 +292,6 @@ impl App {
         std::io::stdout().execute(EnterAlternateScreen)?;
         enable_raw_mode()?;
         terminal.clear()?;
-        Ok(())
-    }
-
-    pub async fn run(&mut self) -> Result<()> {
-        let mut tui = Tui::new()?
-            // .mouse(true) // uncomment this line to enable mouse support
-            .tick_rate(self.tick_rate)
-            .frame_rate(self.frame_rate);
-        tui.enter()?;
-
-        for component in self.page_components.iter() {
-            self.config.add_component_bindings(component);
-        }
-
-        self.help.register_action_handler(self.action_tx.clone())?;
-        self.help.register_config_handler(self.config.clone())?;
-        self.help.init(tui.size()?)?;
-
-        for component in self.components.iter_mut() {
-            component.register_action_handler(self.action_tx.clone())?;
-            component.register_config_handler(self.config.clone())?;
-            component.init(tui.size()?)?;
-        }
-
-        let action_tx = self.action_tx.clone();
-        loop {
-            self.handle_events(&mut tui).await?;
-            if !self.editor_open {
-                self.handle_actions(&mut tui).await?;
-            }
-
-            self.state
-                .manage_connections()
-                .await
-                .expect("failed to manage connections");
-            if self.should_suspend {
-                tui.suspend()?;
-                action_tx.send(Action::Resume)?;
-                action_tx.send(Action::ClearScreen)?;
-                // tui.mouse(true);
-                tui.enter()?;
-            } else if self.should_quit {
-                tui.stop()?;
-                break;
-            }
-        }
-        tui.exit()?;
         Ok(())
     }
 

@@ -29,9 +29,7 @@ pub struct UserInputPopup<A> {
     status: InputPopupStatus,
     /// Position of cursor in the editor area.
     character_index: usize,
-    /// Action to trigger when submitting the text
     _phantom: PhantomData<A>,
-    // action_trigger_fn: Box<dyn FnMut(String) -> MainResult<Action>>,
 }
 
 pub trait UserInputPopupConfig {

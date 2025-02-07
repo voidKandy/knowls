@@ -3878,6 +3878,9 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
+ "tracing-bunyan-formatter",
+ "tracing-log 0.2.0",
+ "tracing-subscriber",
 ]
 
 [[package]]
