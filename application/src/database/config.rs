@@ -46,7 +46,7 @@ impl DatabaseConfig {
 
 /// https://docs.rs/surrealdb/latest/surrealdb/engine/any/fn.connect.html
 /// Surreal supports more, but I've opted to only allow these
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, strum::Display)]
 pub enum Protocol {
     Ws,
     Wss,
@@ -62,6 +62,7 @@ pub enum Protocol {
     /// SurrealKV-backed instance
     Surrealkv,
 }
+
 const ALL_PROTOCOLS: &[&'static Protocol] = &[
     &Protocol::Ws,
     &Protocol::Wss,

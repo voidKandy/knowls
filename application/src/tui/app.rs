@@ -1,58 +1,53 @@
-use std::{
-    any::Any,
-    fs::OpenOptions,
-    io::Write,
-    path::PathBuf,
-    process::Command,
-    str::FromStr,
-    sync::{Arc, LazyLock},
+use super::{
+    action::Action,
+    components::{
+        database::DatabaseComponent, fps::FpsCounter, help::HelpComponent, home::Home,
+        knowledge::KnowledgeComponent, Component, ComponentId, PageComponent, BODY_LAYOUT,
+        OUTER_VERTICAL_LAYOUT,
+    },
+    config::Config,
+    tui::{Event, Tui},
 };
-
-use color_eyre::{eyre::Context, Result};
+use crate::{
+    database::{models::Knowledge, Database, Record},
+    state::State,
+    tui::config::key_event_to_string,
+};
+use color_eyre::Result;
 use crossterm::{
-    event::{self, Event as TermEvent, KeyCode, KeyEvent, KeyEventKind},
+    event::KeyEvent,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
     ExecutableCommand,
 };
 use knowls::MainResult;
 use ratatui::{
     buffer::Buffer,
+    layout::{Constraint, Layout},
     prelude::{CrosstermBackend, Rect},
     style::{Style, Stylize},
     text::Span,
-    widgets::{Clear, Paragraph, Widget, WidgetRef},
-    Frame,
+    widgets::{Paragraph, WidgetRef},
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::{
+    fs::OpenOptions, io::Write, path::PathBuf, process::Command, str::FromStr, sync::LazyLock,
+};
 use tokio::{
     net::{TcpListener, ToSocketAddrs},
     sync::mpsc,
 };
-use tracing::{debug, info, instrument::WithSubscriber};
-
-use crate::{
-    database::{models::Knowledge, Database, Record},
-    state::State,
-    tui::config::key_event_to_string,
-};
-
-use super::{
-    action::Action,
-    components::{
-        fps::FpsCounter, help::HelpComponent, home::Home, knowledge::KnowledgeComponent, Component,
-        ComponentId, ComponentPosition, PageComponent, BODY_LAYOUT, OUTER_VERTICAL_LAYOUT,
-    },
-    config::{parse_key_event, Config},
-    tui::{Event, Tui},
-};
+use tracing::{debug, info};
 
 pub struct App {
     config: Config,
     tick_rate: f64,
     frame_rate: f64,
     editor_open: bool,
+    /// Components rendered in the sidebar
     components: Vec<Box<dyn Component>>,
     help: HelpComponent,
+    /// Components rendered in the body
     page_components: Vec<Box<dyn PageComponent>>,
     should_quit: bool,
     should_suspend: bool,
@@ -72,9 +67,6 @@ pub enum Mode {
     Help(Option<ComponentId>),
     Component(ComponentId),
 }
-
-use std::collections::HashMap;
-use surrealdb::RecordId;
 
 type Terminal = ratatui::Terminal<CrosstermBackend<std::io::Stdout>>;
 async fn mock_state(database: Database) -> State {
@@ -131,7 +123,10 @@ impl App {
             tick_rate,
             frame_rate,
             help: HelpComponent::default(),
-            components: vec![Box::new(FpsCounter::default())],
+            components: vec![
+                Box::new(FpsCounter::default()),
+                Box::new(DatabaseComponent::from(&state)),
+            ],
             page_components: vec![
                 Box::new(Home::new()),
                 Box::new(KnowledgeComponent::from(&state)),
@@ -411,8 +406,21 @@ impl App {
                 }
                 _ => {}
             };
-            for component in self.components.iter_mut() {
-                if let Err(err) = component.draw(frame, sidebar) {
+
+            let constraints = (0..self.components.len())
+                .into_iter()
+                .fold(vec![], |mut acc, _| {
+                    acc.push(Constraint::Fill(1));
+                    acc
+                });
+            let sidebar_split = Layout::vertical(constraints)
+                .flex(ratatui::layout::Flex::Start)
+                .split(sidebar);
+
+            for (i, component) in self.components.iter_mut().enumerate() {
+                let sidebar_area = sidebar_split[i];
+
+                if let Err(err) = component.draw(frame, sidebar_area) {
                     let _ = self
                         .action_tx
                         .send(Action::Error(format!("Failed to draw: {:?}", err)));
