@@ -1,11 +1,12 @@
 use super::user_input::UserInputPopupConfig;
 use super::{super::action::Action, user_input::UserInputPopup};
-use super::{Component, PageComponent};
+use super::{Component, PageComponent, PageComponentAction, PageComponentBindings};
+use crate::impl_into_u32;
 use crate::tui::config::parse_key_event;
 use crate::{database::models::Knowledge, state::State, tui::config::Config};
 use color_eyre::owo_colors::OwoColorize;
 use color_eyre::Result;
-use crossterm::event::{KeyCode, KeyEventKind};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use crossterm::style::StyledContent;
 use ratatui::style::Style;
 use ratatui::symbols::scrollbar;
@@ -25,6 +26,7 @@ use tokio::sync::mpsc::UnboundedSender;
 pub struct KnowledgeComponent {
     command_tx: Option<UnboundedSender<Action>>,
     config: Config,
+    bindings: PageComponentBindings,
     // String is ID of the Knowledge
     knowledge: Vec<(String, Knowledge)>,
     current_knowledge: Option<usize>,
@@ -79,7 +81,6 @@ struct ViewKnowledgePopup {
 impl Component for ViewKnowledgePopup {
     fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) -> Result<Option<Action>> {
         match key.code {
-            // KeyCode::Char('q') => return Ok(()),
             KeyCode::Char('j') | KeyCode::Down => {
                 self.vertical_scroll = self.vertical_scroll.saturating_add(1);
                 self.vertical_scroll_state =
@@ -129,6 +130,7 @@ impl From<&State> for KnowledgeComponent {
             command_tx: None,
             config: Config::default(),
             current_knowledge: None,
+            bindings: Self::action_bindings(),
             popup: None,
             knowledge: value
                 .knowledge
@@ -140,6 +142,40 @@ impl From<&State> for KnowledgeComponent {
 }
 
 impl KnowledgeComponent {
+    fn action_bindings() -> PageComponentBindings {
+        let mut map = HashMap::new();
+        let move_up =
+            PageComponentAction::new(KnowledgeAction::MoveUp, "move to the next knowledge item");
+        let move_down = PageComponentAction::new(
+            KnowledgeAction::MoveDown,
+            "move to the previous knowledge item",
+        );
+        let close_popup = PageComponentAction::new(
+            KnowledgeAction::ClosePopup,
+            "Close the currently opened popup",
+        );
+        let view_knowledge = PageComponentAction::new(
+            KnowledgeAction::ViewKnowledge,
+            "View the currently highlighted knowledge",
+        );
+        let add_knowledge = PageComponentAction::new(
+            KnowledgeAction::AddKnowledge,
+            "Open the add knowledge popup",
+        );
+        let open_in_editor = PageComponentAction::new(
+            KnowledgeAction::OpenInEditor,
+            "Open currently highlighted knowledge in editor",
+        );
+
+        map.insert(vec![parse_key_event("j").unwrap()], move_down);
+        map.insert(vec![parse_key_event("k").unwrap()], move_up);
+        map.insert(vec![parse_key_event("esc").unwrap()], close_popup);
+        map.insert(vec![parse_key_event("v").unwrap()], view_knowledge);
+        map.insert(vec![parse_key_event("a").unwrap()], add_knowledge);
+        map.insert(vec![parse_key_event("o").unwrap()], open_in_editor);
+
+        map
+    }
     fn cycle_knowledge(&mut self, asc: bool) {
         if self.knowledge.is_empty() {
             return;
@@ -174,6 +210,17 @@ impl KnowledgeComponent {
     }
 }
 
+#[derive(Debug, strum::Display, Clone, Copy)]
+enum KnowledgeAction {
+    MoveUp,
+    MoveDown,
+    ClosePopup,
+    ViewKnowledge,
+    AddKnowledge,
+    OpenInEditor,
+}
+impl_into_u32!(KnowledgeAction);
+
 impl PageComponent for KnowledgeComponent {
     fn id(&self) -> super::ComponentId {
         "knowledge".into()
@@ -181,69 +228,26 @@ impl PageComponent for KnowledgeComponent {
     fn selection_keys(&self) -> Vec<crossterm::event::KeyEvent> {
         vec![parse_key_event("k").unwrap()]
     }
-    fn bindings(&self) -> std::collections::HashMap<Vec<crossterm::event::KeyEvent>, Action> {
-        let map = HashMap::new();
-
-        map
+    fn bindings(&self) -> &PageComponentBindings {
+        &self.bindings
     }
-}
-
-impl Component for KnowledgeComponent {
-    fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) -> Result<Option<Action>> {
-        match key.code {
-            code if self.popup.is_some() => {
-                match self.popup.as_mut().unwrap() {
-                    Popup::AddKnowledge(popup) => {
-                        match code {
-                            // close popup
-                            KeyCode::Esc => {
-                                self.popup = None;
-                                return Ok(None);
-                            }
-                            _ if key.kind == KeyEventKind::Press => {
-                                return popup.handle_key_event(key)
-                            }
-                            _ => {}
-                        }
-                    }
-                    Popup::ViewKnowledge(popup) => {
-                        match code {
-                            // close popup
-                            KeyCode::Esc => {
-                                self.popup = None;
-                                return Ok(None);
-                            }
-                            _ if key.kind == KeyEventKind::Press => {
-                                return popup.handle_key_event(key)
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            }
-            KeyCode::Char('k') => {
+    fn handle_action(
+        &mut self,
+        action: &PageComponentAction,
+    ) -> Result<Option<crate::tui::action::Action>> {
+        tracing::warn!("knowledge component handling action: {action:#?}");
+        match action.id {
+            _ if action.id == KnowledgeAction::MoveUp as u32 => {
                 self.cycle_knowledge(true);
             }
-            KeyCode::Char('j') => {
-                self.cycle_knowledge(false);
+            _ if action.id == KnowledgeAction::MoveDown as u32 => {
+                self.cycle_knowledge(true);
             }
-
-            KeyCode::Char('o') => {
-                if let Some(i) = self.current_knowledge {
-                    let content = self.knowledge.get(i).as_ref().unwrap().1.content.to_owned();
-                    return Ok(Some(Action::OpenEditor(content)));
-                }
+            _ if action.id == KnowledgeAction::ClosePopup as u32 && self.popup.is_some() => {
+                self.popup = None;
             }
-
-            KeyCode::Char('a') => {
-                // open add knowledge popup
-                self.popup = Some(
-                    AddKnowledgePopup::new_with_title("Type a Path to a Knowledge Source").into(),
-                );
-            }
-
-            KeyCode::Char('v') => {
-                // open view knowledge popup
+            _ if action.id == KnowledgeAction::ViewKnowledge as u32 && self.popup.is_none() => {
+                tracing::warn!("opening view popup");
                 if let Some(i) = self.current_knowledge {
                     let current_knowledge = &self.knowledge[i];
 
@@ -260,10 +264,58 @@ impl Component for KnowledgeComponent {
                     );
                 }
             }
+            _ if action.id == KnowledgeAction::AddKnowledge as u32 && self.popup.is_none() => {
+                tracing::warn!("opening add popup");
+                // open add knowledge popup
+                self.popup = Some(
+                    AddKnowledgePopup::new_with_title("Type a Path to a Knowledge Source").into(),
+                );
+            }
+
+            _ if action.id == KnowledgeAction::OpenInEditor as u32 && self.popup.is_some() => {
+                if let Some(i) = self.current_knowledge {
+                    let content = self.knowledge.get(i).as_ref().unwrap().1.content.to_owned();
+                    return Ok(Some(Action::OpenEditor(content)));
+                }
+            }
 
             _ => {}
         }
         Ok(None)
+    }
+}
+
+impl Component for KnowledgeComponent {
+    fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) -> Result<Option<Action>> {
+        tracing::warn!("handling key event: {:#?}", key.code);
+        let action_opt = self.bindings.remove(&vec![key]);
+        tracing::warn!("got action: {action_opt:#?}");
+        let mut return_action = None;
+        match self.popup.as_mut() {
+            Some(popup)
+                if action_opt
+                    .as_ref()
+                    .is_none_or(|k| k.id != KnowledgeAction::ClosePopup as u32) =>
+            {
+                match popup {
+                    Popup::AddKnowledge(ref mut p) => return p.handle_key_event(key),
+                    Popup::ViewKnowledge(ref mut p) => return p.handle_key_event(key),
+                }
+            }
+            None | Some(_) if action_opt.is_some() => {
+                let action = action_opt.as_ref().unwrap();
+                return_action = self.handle_action(action)?;
+            }
+            _ => {
+                tracing::warn!("key event {key:#?} triggered nothing");
+            }
+        }
+
+        if let Some(action) = action_opt {
+            self.bindings.insert(vec![key], action);
+        }
+
+        Ok(return_action)
     }
 
     fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {

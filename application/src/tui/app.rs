@@ -215,7 +215,7 @@ impl App {
         tui.enter()?;
 
         for component in self.page_components.iter() {
-            self.config.keybindings.add_component_bindings(component);
+            self.config.add_component_bindings(component);
         }
 
         self.help.register_action_handler(self.action_tx.clone())?;
@@ -279,9 +279,27 @@ impl App {
 
     fn handle_key_event(&mut self, key: KeyEvent) -> Result<()> {
         let action_tx = self.action_tx.clone();
+        if let Mode::Component(id) = &mut self.mode {
+            let component = self
+                .page_components
+                .iter_mut()
+                .find(|c| c.id() == *id)
+                .expect("should have gotten a component here");
+            match component.handle_key_event(key) {
+                Ok(Some(action)) => action_tx.send(action)?,
+                Err(err) => self.action_tx.send(Action::Error(format!(
+                    "Component failed handle key event : {:?}",
+                    err
+                )))?,
+                Ok(None) => {}
+            }
+            // return Ok(());
+        }
+
         let Some(keymap) = self.config.keybindings.get(&self.mode) else {
             return Ok(());
         };
+
         match keymap.get(&vec![key]) {
             Some(action) => {
                 info!("Got action: {action:?}");

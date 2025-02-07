@@ -67,16 +67,52 @@ pub const OUTER_VERTICAL_LAYOUT: LazyLock<Layout> =
 pub const BODY_LAYOUT: LazyLock<Layout> =
     LazyLock::new(|| Layout::horizontal([Constraint::Percentage(75), Constraint::Percentage(25)]));
 
+/// Page component actions are actions specific to page components
+/// it's easy to just give page components a function to do something on a key event,
+/// this is how we make that `observable` by the `Help` component
+#[derive(Clone, Debug, serde::Deserialize)]
+pub struct PageComponentAction {
+    pub id: u32,
+    pub name: String,
+    pub description: String,
+}
+
+#[macro_export]
+macro_rules! impl_into_u32 {
+    ($enum:ident) => {
+        impl Into<u32> for $enum {
+            fn into(self) -> u32 {
+                self as u32
+            }
+        }
+    };
+}
+
+impl PageComponentAction {
+    /// The best way to utilize this function is to implement `strum::Display`
+    /// and use the `impl_into_u32` macro on the `Action` enum you've defined for your `PageComponent`
+    pub fn new(action_variant: impl Into<u32> + ToString, description: &str) -> Self {
+        Self {
+            name: action_variant.to_string(),
+            id: action_variant.into(),
+            description: description.to_owned(),
+        }
+    }
+}
+
+pub type PageComponentBindings = HashMap<Vec<KeyEvent>, PageComponentAction>;
 /// Page components are rendered in the `body` of the application based on the current mode
 pub trait PageComponent: Component {
-    /// Denote where on the screen the component should be rendered
-    /// Used in `App::render()`
-    // fn position(&self) -> ComponentPosition;
     fn id(&self) -> ComponentId;
     /// Keys that can be pressed while the application is in Normal mode to switch to this page
     fn selection_keys(&self) -> Vec<KeyEvent>;
     /// Bindings that are used when this component is the current page
-    fn bindings(&self) -> HashMap<Vec<KeyEvent>, Action>;
+    /// Because this returns a reference, any struct implementing `PageComponent`
+    /// needs to have a *field* that holds these bindings
+    fn bindings(&self) -> &PageComponentBindings;
+    /// This should replace the `handle_key_event` function provided by `Component`
+    /// In order to do this, get the associate `PageComponentAction` and call this function
+    fn handle_action(&mut self, action: &PageComponentAction) -> Result<Option<Action>>;
 }
 
 /// `Component` is a trait that represents a visual and interactive element of the user interface.

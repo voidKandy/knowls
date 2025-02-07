@@ -11,7 +11,7 @@ use tracing::error;
 use super::{
     action::Action,
     app::Mode,
-    components::{Component, PageComponent},
+    components::{self, Component, ComponentId, PageComponent, PageComponentBindings},
 };
 
 #[derive(Clone, Debug, Deserialize, Default)]
@@ -30,6 +30,8 @@ pub struct Config {
     pub config: AppConfig,
     #[serde(default)]
     pub keybindings: KeyBindings,
+    #[serde(default)]
+    pub page_component_keybindings: HashMap<ComponentId, PageComponentBindings>,
     #[serde(default)]
     pub styles: Styles,
 }
@@ -96,6 +98,52 @@ impl Config {
 
         Ok(cfg)
     }
+
+    /// using methods provided by the `PageComponent` trait, this method will insert the bindings
+    /// for entering/exiting the mode
+    /// As well as registering the `PageComponentBindings`
+    pub fn add_component_bindings(&mut self, component: &Box<dyn PageComponent>) {
+        self.page_component_keybindings
+            .insert(component.id(), component.bindings().to_owned());
+        let mode = Mode::Component(component.id());
+
+        let mut bindings = HashMap::new();
+        bindings.insert(
+            vec![parse_key_event("q").unwrap()],
+            Action::ChangeMode(Mode::Normal),
+        );
+        bindings.insert(
+            vec![parse_key_event("?").unwrap()],
+            Action::ChangeMode(Mode::Help(Some(component.id()))),
+        );
+        self.keybindings.0.insert(mode, bindings);
+
+        let mut help_mode_bindings = HashMap::new();
+        help_mode_bindings.insert(
+            vec![parse_key_event("q").unwrap()],
+            Action::ChangeMode(Mode::Component(component.id())),
+        );
+        self.keybindings
+            .0
+            .insert(Mode::Help(Some(component.id())), help_mode_bindings);
+
+        match self.keybindings.0.get_mut(&Mode::Normal) {
+            Some(map) => {
+                map.insert(
+                    component.selection_keys(),
+                    Action::ChangeMode(Mode::Component(component.id())),
+                );
+            }
+            None => {
+                let mut map = HashMap::new();
+                map.insert(
+                    component.selection_keys(),
+                    Action::ChangeMode(Mode::Component(component.id())),
+                );
+                self.keybindings.0.insert(Mode::Normal, map);
+            }
+        }
+    }
 }
 
 pub fn get_data_dir() -> PathBuf {
@@ -147,49 +195,6 @@ impl Default for KeyBindings {
         mode_map.insert(Mode::Normal, normal_mode_bindings);
         mode_map.insert(Mode::Help(None), help_mode_bindings);
         Self(mode_map)
-    }
-}
-
-impl KeyBindings {
-    /// using methods provided by the `PageComponent` trait, this method will insert all the
-    /// component's bindings for it's mode as well as bindings for entering/exiting the mode
-    pub fn add_component_bindings(&mut self, component: &Box<dyn PageComponent>) {
-        let mode = Mode::Component(component.id());
-        let mut bindings = component.bindings();
-        bindings.insert(
-            vec![parse_key_event("q").unwrap()],
-            Action::ChangeMode(Mode::Normal),
-        );
-        bindings.insert(
-            vec![parse_key_event("?").unwrap()],
-            Action::ChangeMode(Mode::Help(Some(component.id()))),
-        );
-        self.0.insert(mode, bindings);
-
-        let mut help_mode_bindings = HashMap::new();
-        help_mode_bindings.insert(
-            vec![parse_key_event("q").unwrap()],
-            Action::ChangeMode(Mode::Component(component.id())),
-        );
-        self.0
-            .insert(Mode::Help(Some(component.id())), help_mode_bindings);
-
-        match self.0.get_mut(&Mode::Normal) {
-            Some(map) => {
-                map.insert(
-                    component.selection_keys(),
-                    Action::ChangeMode(Mode::Component(component.id())),
-                );
-            }
-            None => {
-                let mut map = HashMap::new();
-                map.insert(
-                    component.selection_keys(),
-                    Action::ChangeMode(Mode::Component(component.id())),
-                );
-                self.0.insert(Mode::Normal, map);
-            }
-        }
     }
 }
 

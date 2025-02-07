@@ -8,12 +8,13 @@ use crate::state::State;
 use crate::tui::config::parse_key_event;
 
 use super::super::{action::Action, config::Config};
-use super::{Component, PageComponent};
+use super::{Component, PageComponent, PageComponentBindings};
 
 #[derive(Default)]
 pub struct Home {
     command_tx: Option<UnboundedSender<Action>>,
     config: Config,
+    bindings: PageComponentBindings,
 }
 
 impl Home {
@@ -29,16 +30,12 @@ impl PageComponent for Home {
     fn selection_keys(&self) -> Vec<crossterm::event::KeyEvent> {
         vec![parse_key_event("h").unwrap()]
     }
-    fn bindings(&self) -> std::collections::HashMap<Vec<crossterm::event::KeyEvent>, Action> {
-        let map = HashMap::new();
-        map
+    fn bindings(&self) -> &PageComponentBindings {
+        &self.bindings
     }
-    // fn position(&self) -> super::ComponentPosition {
-    //     super::ComponentPosition::Body {
-    //         id: "home".into(),
-    //         selection_keys: vec!['h'],
-    //     }
-    // }
+    fn handle_action(&mut self, action: &super::PageComponentAction) -> Result<Option<Action>> {
+        Ok(None)
+    }
 }
 impl Component for Home {
     fn register_action_handler(&mut self, tx: UnboundedSender<Action>) -> Result<()> {
