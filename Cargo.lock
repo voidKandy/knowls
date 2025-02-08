@@ -173,6 +173,7 @@ dependencies = [
  "futures",
  "knowls",
  "libc",
+ "lsp-server",
  "lsp-types",
  "ratatui",
  "seraphic",
@@ -2183,6 +2184,8 @@ name = "knowls"
 version = "0.1.0"
 dependencies = [
  "cc",
+ "lsp-server",
+ "lsp-types",
  "seraphic",
  "serde",
  "serde_json",

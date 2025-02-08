@@ -4,10 +4,8 @@ use super::{Component, PageComponent, PageComponentAction, PageComponentBindings
 use crate::impl_into_u32;
 use crate::tui::config::parse_key_event;
 use crate::{database::models::Knowledge, state::State, tui::config::Config};
-use color_eyre::owo_colors::OwoColorize;
 use color_eyre::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use crossterm::style::StyledContent;
+use crossterm::event::KeyCode;
 use ratatui::style::Style;
 use ratatui::symbols::scrollbar;
 use ratatui::widgets::{Clear, Scrollbar, ScrollbarOrientation, ScrollbarState, Widget, Wrap};

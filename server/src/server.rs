@@ -1,21 +1,52 @@
-use seraphic::packet::{PacketRead, TcpPacket};
-use tokio::net::{TcpStream, ToSocketAddrs};
+use knowls::rpc::{LspMessage, LspRequest, Request, RpcMessage};
+use seraphic::{
+    packet::{PacketRead, TcpPacket},
+    RequestWrapper,
+};
+use tokio::{
+    io::AsyncWriteExt,
+    net::{TcpStream, ToSocketAddrs},
+};
 
 use lsp_types::{
     CodeActionProviderCapability, DiagnosticServerCapabilities, InitializeParams,
-    ServerCapabilities, ShowMessageParams, TextDocumentSyncCapability, TextDocumentSyncKind,
-    TextDocumentSyncOptions, TextDocumentSyncSaveOptions, WorkDoneProgressOptions,
+    ServerCapabilities, ShowMessageParams, StaticTextDocumentRegistrationOptions,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    TextDocumentSyncSaveOptions, WorkDoneProgressOptions,
 };
 
 pub struct Server {
     app_connection: TcpStream,
     lsp_connection: lsp_server::Connection,
+    /// we need to generate IDs for every `Notification` that gets relayed
+    /// up to two chars are generated from this number
+    lsp_id: u16,
 }
 
 impl Server {
+    // 97 is a 122 is z
+    fn lsp_id_chars(&self) -> String {
+        let mut str = String::new();
+        let first_letter = (((self.lsp_id / 25) + 97) as u8) as char;
+        str.push(first_letter);
+        if self.lsp_id > 25 {
+            let second_letter = (((self.lsp_id % 25) + 97) as u8) as char;
+            str.push(second_letter);
+        }
+        str
+    }
+    fn increment_lsp_id(&mut self) {
+        if self.lsp_id == 625 {
+            self.lsp_id = 0;
+        } else {
+            self.lsp_id += 1;
+        }
+    }
+
     pub async fn init(app_addr: impl ToSocketAddrs) -> super::MainResult<Self> {
         let app_connection = TcpStream::connect(app_addr).await?;
         Ok(Self {
+            lsp_id: 0,
             app_connection,
             lsp_connection: init_lsp_connection(),
         })
@@ -44,12 +75,34 @@ impl Server {
     }
 
     async fn handle_lsp_message(&mut self, msg: lsp_server::Message) -> super::MainResult<()> {
+        let (id, msg) = match msg {
+            lsp_server::Message::Request(ref req) => (req.id.to_string(), LspMessage::from(msg)),
+            lsp_server::Message::Notification(ref _not) => {
+                let r = (self.lsp_id_chars(), LspMessage::from(msg));
+                self.increment_lsp_id();
+                r
+            }
+            lsp_server::Message::Response(ref res) => (res.id.to_string(), LspMessage::from(msg)),
+        };
+        let req = Request::Lsp(LspRequest { msg });
+        TcpPacket::<RpcMessage>::async_write(&mut self.app_connection, &req.into_message(id))
+            .await?;
         Ok(())
     }
+
     async fn handle_application_message(
         &mut self,
         msg: knowls::rpc::RpcMessage,
     ) -> super::MainResult<()> {
+        match msg {
+            seraphic::Message::Res { id, res } => match res {
+                knowls::rpc::Response::Lsp(lsp_message) => {
+                    self.lsp_connection.sender.send(lsp_message.msg.into())?;
+                }
+                _ => {}
+            },
+            _ => {}
+        }
         Ok(())
     }
 }

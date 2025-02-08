@@ -129,7 +129,7 @@ impl Component for ConnectionsComponent {
         }
 
         let throbber_chunk = chunks.last().take().unwrap();
-        let simple = throbber_widgets_tui::Throbber::default();
+        let simple = throbber_widgets_tui::Throbber::default().label("Listening...");
         frame.render_widget(simple, *throbber_chunk);
         Ok(())
     }

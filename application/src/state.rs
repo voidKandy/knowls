@@ -1,13 +1,14 @@
 use crate::{database::Record, rpc::ConnectionInfo};
 use knowls::{
     other_err,
-    rpc::{HealthResponse, Request, Response, RpcMessage},
+    rpc::{HealthResponse, LspMessage, LspRequest, Request, Response, RpcMessage},
     MainResult,
 };
 use seraphic::ResponseWrapper;
 use std::{collections::HashMap, sync::Arc};
 use surrealdb::RecordId;
 use tokio::{net::TcpListener, sync::RwLock};
+use tracing::field::AsField;
 
 use crate::database::{models::Knowledge, Database};
 
@@ -62,11 +63,13 @@ impl State {
                         None => break,
                     };
                     drop(info_w);
-                    let response = self
+                    if let Some(response) = self
                         .handle_rpc_message(message)
                         .await
-                        .expect("failed to handle rpc message");
-                    info.push_outbound(response).await;
+                        .expect("failed to handle rpc message")
+                    {
+                        info.push_outbound(response).await;
+                    }
                 }
                 info.incoming_pending
                     .store(false, std::sync::atomic::Ordering::Relaxed);
@@ -77,10 +80,21 @@ impl State {
         Ok(())
     }
 
-    async fn handle_rpc_message(&mut self, msg: RpcMessage) -> MainResult<RpcMessage> {
+    async fn handle_rpc_message(&mut self, msg: RpcMessage) -> MainResult<Option<RpcMessage>> {
         match msg {
             seraphic::Message::Req { id, req } => match req {
-                Request::Health(_) => Ok(Response::from(HealthResponse {}).into_message(id)),
+                Request::Health(_) => {
+                    return Ok(Some(Response::from(HealthResponse {}).into_message(id)));
+                }
+                Request::Lsp(req) => {
+                    if let Some(res_msg) = self.handle_lsp_req_message(req).await? {
+                        return Ok(Some(
+                            Response::Lsp(knowls::rpc::LspResponse { msg: res_msg })
+                                .into_message(id),
+                        ));
+                    }
+                    return Ok(None);
+                }
             },
             _ => Err(other_err!("did not expect non req RpcMessage: {msg:#?}")),
         }
@@ -100,5 +114,51 @@ impl State {
                 }
                 acc
             }))
+    }
+
+    async fn handle_lsp_req_message(&mut self, req: LspRequest) -> MainResult<Option<LspMessage>> {
+        match Into::<lsp_server::Message>::into(req.msg) {
+            lsp_server::Message::Request(req) => {
+                return self.handle_lsp_request(req);
+            }
+            lsp_server::Message::Response(res) => {
+                return self.handle_lsp_response(res);
+            }
+            lsp_server::Message::Notification(noti) => {
+                return self.handle_lsp_notification(noti);
+            }
+        }
+    }
+
+    /// I don't know why this end of the connection would ever receive responses
+    fn handle_lsp_response(&mut self, res: lsp_server::Response) -> MainResult<Option<LspMessage>> {
+        Ok(None)
+    }
+
+    fn handle_lsp_request(&mut self, req: lsp_server::Request) -> MainResult<Option<LspMessage>> {
+        match req.method.as_str() {
+            "textDocument/definition" => {}
+            "textDocument/hover" => {}
+            "textDocument/diagnostic" => {}
+            m => {
+                tracing::warn!("unhandled request method: {m:#?}");
+            }
+        }
+        Ok(None)
+    }
+
+    fn handle_lsp_notification(
+        &mut self,
+        noti: lsp_server::Notification,
+    ) -> MainResult<Option<LspMessage>> {
+        match noti.method.as_str() {
+            "textDocument/didChange" => {}
+            "textDocument/didSave" => {}
+            "textDocument/didOpen" => {}
+            m => {
+                tracing::warn!("unhandled notification: {m:#?}");
+            }
+        }
+        Ok(None)
     }
 }
