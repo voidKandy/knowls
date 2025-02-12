@@ -2,10 +2,8 @@ use std::{collections::HashMap, net::SocketAddr, str::FromStr, time::Instant};
 
 use super::super::action::Action;
 use super::{Component, PageComponent, PageComponentBindings};
-use crate::{
-    database::config::DatabaseConfig, rpc::ConnectionInfo, state::State,
-    tui::config::parse_key_event,
-};
+use crate::state::StateReadGuard;
+use crate::{database::config::DatabaseConfig, state::State, tui::config::parse_key_event};
 use color_eyre::Result;
 use knowls::util::oneof::OneOf;
 use ratatui::{
@@ -31,31 +29,27 @@ pub struct ConnectionsComponent {
     bindings: PageComponentBindings,
 }
 
-impl From<&State> for ConnectionsComponent {
-    fn from(value: &State) -> Self {
+impl From<&StateReadGuard<'_>> for ConnectionsComponent {
+    fn from(value: &StateReadGuard<'_>) -> Self {
         Self {
             connections: value
                 .connections
-                .try_read()
-                .expect("failed to get connections read when building connections component")
                 .iter()
                 .fold(vec![], |mut acc, (addr, info)| {
                     acc.push(ComponentConnectionInfo {
                         addr: SocketAddr::from_str(addr).unwrap(),
                         incoming: info
-                            .info
                             .incoming
                             .try_read()
                             .expect("could not read incoming queue")
                             .len(),
                         outbound: info
-                            .info
                             .outbound
                             .try_read()
                             .expect("could not read incoming queue")
                             .len(),
 
-                        established: info.info.established,
+                        established: info.established,
                     });
                     acc
                 }),
@@ -100,7 +94,7 @@ impl ConnectionsComponent {
 }
 
 impl Component for ConnectionsComponent {
-    fn update(&mut self, state: &State, action: Action) -> Result<Option<Action>> {
+    fn update(&mut self, state: &StateReadGuard<'_>, action: Action) -> Result<Option<Action>> {
         match action {
             // Action::Tick => {
             //     if let OneOf::Left(ref mut throbber) = self.healthy {
@@ -110,29 +104,26 @@ impl Component for ConnectionsComponent {
             _ => {}
         };
 
-        if let Ok(connections_read) = state.connections.try_read() {
-            self.connections = connections_read
-                .iter()
-                .fold(vec![], |mut acc, (addr, info)| {
-                    acc.push(ComponentConnectionInfo {
-                        addr: SocketAddr::from_str(addr).unwrap(),
-                        established: info.info.established,
-                        incoming: info
-                            .info
-                            .incoming
-                            .try_read()
-                            .expect("could not read incoming queue")
-                            .len(),
-                        outbound: info
-                            .info
-                            .outbound
-                            .try_read()
-                            .expect("could not read incoming queue")
-                            .len(),
-                    });
-                    acc
+        self.connections = state
+            .connections
+            .iter()
+            .fold(vec![], |mut acc, (addr, info)| {
+                acc.push(ComponentConnectionInfo {
+                    addr: SocketAddr::from_str(addr).unwrap(),
+                    established: info.established,
+                    incoming: info
+                        .incoming
+                        .try_read()
+                        .expect("could not read incoming queue")
+                        .len(),
+                    outbound: info
+                        .outbound
+                        .try_read()
+                        .expect("could not read incoming queue")
+                        .len(),
                 });
-        }
+                acc
+            });
 
         Ok(None)
     }

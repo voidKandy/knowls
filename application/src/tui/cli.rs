@@ -5,6 +5,9 @@ use super::config::{get_config_dir, get_data_dir};
 #[derive(Parser, Debug)]
 #[command(author, version = version(), about)]
 pub struct Cli {
+    /// Whether or not the tui should run
+    #[arg(short, long, value_name = "BOOL", default_value_t = true)]
+    pub run_tui: bool,
     /// Tick rate, i.e. number of ticks per second
     #[arg(short, long, value_name = "FLOAT", default_value_t = 4.0)]
     pub tick_rate: f64,
@@ -13,7 +16,7 @@ pub struct Cli {
     #[arg(short, long, value_name = "FLOAT", default_value_t = 60.0)]
     pub frame_rate: f64,
 
-    #[arg(short, long, value_name = "String", default_value_t =String::from("127.0.0.1:8888"))]
+    #[arg(short='a', long, value_name = "ADDR", default_value_t =String::from("127.0.0.1:8888"))]
     pub rpc_addr: String,
 }
 

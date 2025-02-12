@@ -11,7 +11,10 @@ use ratatui::{
 };
 use throbber_widgets_tui::ThrobberState;
 
-use crate::{database::config::DatabaseConfig, state::State};
+use crate::{
+    database::config::DatabaseConfig,
+    state::{State, StateReadGuard},
+};
 
 use super::{Component, PageComponent};
 
@@ -23,8 +26,8 @@ pub struct DatabaseComponent {
     config: DatabaseConfig,
 }
 
-impl From<&State> for DatabaseComponent {
-    fn from(value: &State) -> Self {
+impl From<&StateReadGuard<'_>> for DatabaseComponent {
+    fn from(value: &StateReadGuard<'_>) -> Self {
         Self {
             healthy: OneOf::Left(ThrobberState::default()),
             config: value.database.config().clone(),
@@ -33,7 +36,7 @@ impl From<&State> for DatabaseComponent {
 }
 
 impl Component for DatabaseComponent {
-    fn update(&mut self, _state: &State, action: Action) -> Result<Option<Action>> {
+    fn update(&mut self, state: &StateReadGuard<'_>, action: Action) -> Result<Option<Action>> {
         match action {
             Action::Tick => {
                 if let OneOf::Left(ref mut throbber) = self.healthy {

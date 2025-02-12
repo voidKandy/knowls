@@ -9,7 +9,7 @@ use ratatui::{
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::state::State;
+use crate::state::{State, StateReadGuard};
 
 use super::{
     action::Action,
@@ -213,7 +213,7 @@ pub trait Component {
     /// # Returns
     ///
     /// * `Result<Option<Action>>` - An action to be processed or none.
-    fn update(&mut self, state: &State, action: Action) -> Result<Option<Action>> {
+    fn update(&mut self, state: &StateReadGuard<'_>, action: Action) -> Result<Option<Action>> {
         let _ = action; // to appease clippy
         Ok(None)
     }

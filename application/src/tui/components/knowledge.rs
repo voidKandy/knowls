@@ -2,6 +2,7 @@ use super::user_input::UserInputPopupConfig;
 use super::{super::action::Action, user_input::UserInputPopup};
 use super::{Component, PageComponent, PageComponentAction, PageComponentBindings};
 use crate::impl_into_u32;
+use crate::state::{SharedState, StateReadGuard};
 use crate::tui::config::parse_key_event;
 use crate::{database::models::Knowledge, state::State, tui::config::Config};
 use color_eyre::Result;
@@ -122,8 +123,8 @@ impl Component for ViewKnowledgePopup {
     }
 }
 
-impl From<&State> for KnowledgeComponent {
-    fn from(value: &State) -> Self {
+impl From<&StateReadGuard<'_>> for KnowledgeComponent {
+    fn from(value: &StateReadGuard<'_>) -> Self {
         Self {
             command_tx: None,
             config: Config::default(),
@@ -325,7 +326,7 @@ impl Component for KnowledgeComponent {
         Ok(())
     }
 
-    fn update(&mut self, state: &State, action: Action) -> Result<Option<Action>> {
+    fn update(&mut self, state: &StateReadGuard<'_>, action: Action) -> Result<Option<Action>> {
         match action {
             // Action::Tick => self.app_tick()?,
             // Action::Render => self.render_tick()?,

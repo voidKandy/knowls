@@ -148,9 +148,10 @@ impl<A: UserInputPopupConfig> Component for UserInputPopup<A> {
         }
         Ok(None)
     }
+
     fn update(
         &mut self,
-        _state: &State,
+        state: &crate::state::StateReadGuard<'_>,
         action: Action,
     ) -> color_eyre::eyre::Result<Option<Action>> {
         match action {

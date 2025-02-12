@@ -48,7 +48,11 @@ impl Component for Home {
         Ok(())
     }
 
-    fn update(&mut self, _state: &State, action: Action) -> Result<Option<Action>> {
+    fn update(
+        &mut self,
+        state: &crate::state::StateReadGuard<'_>,
+        action: Action,
+    ) -> Result<Option<Action>> {
         match action {
             Action::Tick => {
                 // add any logic here that should run on every tick

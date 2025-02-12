@@ -76,7 +76,11 @@ impl Component for HelpComponent {
         self.config = config;
         Ok(())
     }
-    fn update(&mut self, _state: &State, action: Action) -> Result<Option<Action>> {
+    fn update(
+        &mut self,
+        state: &crate::state::StateReadGuard<'_>,
+        action: Action,
+    ) -> Result<Option<Action>> {
         Ok(None)
     }
 

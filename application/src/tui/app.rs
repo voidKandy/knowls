@@ -10,8 +10,7 @@ use super::{
 };
 use crate::{
     database::{models::Knowledge, Database, Record},
-    rpc::{ConnectionInfo, RpcListener},
-    state::{ConnectionInfoWrapper, State},
+    state::{SharedState, State},
     tui::config::key_event_to_string,
 };
 use color_eyre::Result;
@@ -41,30 +40,6 @@ use tokio::{
 };
 use tracing::{debug, info};
 
-pub struct RpcListenerContext {
-    listener: RpcListener,
-    connections: Arc<RwLock<HashMap<String, ConnectionInfoWrapper>>>,
-}
-
-impl RpcListenerContext {
-    async fn spawn_handle(mut self) -> JoinHandle<()> {
-        tokio::spawn(async move {
-            loop {
-                match self.listener.accept().await {
-                    Ok((addr, conn)) => {
-                        let mut w = self.connections.write().await;
-                        w.insert(addr.to_string(), conn.into());
-                    }
-                    Err(e) => {
-                        // probably shouldn't panic
-                        panic!("error with listening thread: {e:#?}");
-                    }
-                }
-            }
-        })
-    }
-}
-
 pub struct App {
     config: Config,
     tick_rate: f64,
@@ -84,8 +59,7 @@ pub struct App {
     action_tx: mpsc::UnboundedSender<Action>,
     action_rx: mpsc::UnboundedReceiver<Action>,
 
-    rpc_listener_thread: JoinHandle<()>,
-    state: State,
+    state: SharedState,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -97,77 +71,38 @@ pub enum Mode {
 }
 
 type Terminal = ratatui::Terminal<CrosstermBackend<std::io::Stdout>>;
-async fn mock_state(database: Database) -> State {
-    let mut knowledge = HashMap::new();
-
-    let mock_entries = vec![
-        (
-            PathBuf::from_str("testknowledge/1").unwrap(),
-            "Zig is a general-purpose programming language.",
-        ),
-        (
-            PathBuf::from_str("testknowledge/2").unwrap(),
-            "Rust provides memory safety without garbage collection.",
-        ),
-        (
-            PathBuf::from_str("testknowledge/3").unwrap(),
-            "SurrealDB is a multi-model database for web applications.",
-        ),
-    ];
-
-    for (path, content) in mock_entries {
-        let k = Knowledge::new(path, content);
-        let r: Option<Record<Knowledge>> = database
-            .client
-            .create("knowledge")
-            .content(k)
-            .await
-            .unwrap();
-        let r = r.unwrap();
-        knowledge.insert(r.id, r.obj);
-    }
-
-    State {
-        database,
-        knowledge,
-        connections: Arc::new(RwLock::new(HashMap::new())),
-        lsp_documents: HashMap::new(),
-    }
-}
 
 impl App {
     pub async fn new(
+        state: SharedState,
         tick_rate: f64,
         frame_rate: f64,
-        rpc_listen_addr: impl ToSocketAddrs,
-        database: Database,
+        // rpc_listen_addr: impl ToSocketAddrs,
+        // database: Database,
     ) -> MainResult<Self> {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
-        let listener = TcpListener::bind(rpc_listen_addr).await?.into();
-        let state = mock_state(database).await;
-        // it might be BAD to have this handle spawned in the `new` method
-        let rpc_listener_thread = RpcListenerContext {
-            listener,
-            connections: Arc::clone(&state.connections),
-        }
-        .spawn_handle()
-        .await;
-        // let state = State::new(database);
+        // let listener = TcpListener::bind(rpc_listen_addr).await?.into();
+        let r = state.read().await;
+
+        let page_components: Vec<Box<dyn PageComponent>> = vec![
+            Box::new(KnowledgeComponent::from(&r)),
+            Box::new(ConnectionsComponent::from(&r)),
+        ];
+
+        let components: Vec<Box<dyn Component>> = vec![
+            Box::new(FpsCounter::default()),
+            Box::new(DatabaseComponent::from(&r)),
+        ];
+        drop(r);
+
         Ok(Self {
             editor_open: false,
-            rpc_listener_thread,
             tick_rate,
             frame_rate,
             home: Home::new(),
             help: HelpComponent::default(),
-            components: vec![
-                Box::new(FpsCounter::default()),
-                Box::new(DatabaseComponent::from(&state)),
-            ],
-            page_components: vec![
-                Box::new(KnowledgeComponent::from(&state)),
-                Box::new(ConnectionsComponent::from(&state)),
-            ],
+            components,
+            page_components,
             state,
             should_quit: false,
             should_suspend: false,
@@ -217,10 +152,10 @@ impl App {
                 self.handle_actions(&mut tui).await?;
             }
 
-            self.state
-                .manage_connections()
-                .await
-                .expect("failed to manage connections");
+            // self.state
+            //     .manage_connections()
+            //     .await
+            //     .expect("failed to manage connections");
             if self.should_suspend {
                 tui.suspend()?;
                 action_tx.send(Action::Resume)?;
@@ -385,15 +320,15 @@ impl App {
                     tracing::warn!("out of editor mode");
                 }
                 Action::InsertKnowledge(knowledge) => {
-                    let r: Option<Record<Knowledge>> = self
-                        .state
+                    let mut w = self.state.write().await;
+                    let r: Option<Record<Knowledge>> = w
                         .database
                         .client
                         .create("knowledge")
                         .content(knowledge)
                         .await?;
                     let r = r.unwrap();
-                    self.state.knowledge.insert(r.id, r.obj);
+                    w.knowledge.insert(r.id, r.obj);
                     // this will not get passed to component action handler
                     return Ok(());
                 }
@@ -403,15 +338,21 @@ impl App {
                 }
                 _ => {}
             }
-            for component in self.components.iter_mut() {
-                if let Some(action) = component.update(&self.state, action.clone())? {
-                    self.action_tx.send(action)?
-                };
-            }
-            for component in self.page_components.iter_mut() {
-                if let Some(action) = component.update(&self.state, action.clone())? {
-                    self.action_tx.send(action)?
-                };
+
+            // Components are only updated if its possible to get state read immediately
+            // This prevents the ui from blocking when something is mutating state
+            // I might come to regret this but probably not
+            if let Ok(r) = self.state.try_read() {
+                for component in self.components.iter_mut() {
+                    if let Some(action) = component.update(&r, action.clone())? {
+                        self.action_tx.send(action)?
+                    };
+                }
+                for component in self.page_components.iter_mut() {
+                    if let Some(action) = component.update(&r, action.clone())? {
+                        self.action_tx.send(action)?
+                    };
+                }
             }
         }
         Ok(())
