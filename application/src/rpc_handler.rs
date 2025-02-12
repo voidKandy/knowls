@@ -5,7 +5,10 @@ use knowls::{
     MainResult,
 };
 use lsp_server::ResponseError;
-use lsp_types::{Hover, HoverParams};
+use lsp_types::{
+    request::DocumentDiagnosticRequest, Hover, HoverParams, Position, PublishDiagnosticsParams,
+    Range,
+};
 use seraphic::{
     packet::{PacketRead, TcpPacket},
     ResponseWrapper,
@@ -150,8 +153,12 @@ impl RpcConnectionHandler {
                         .await
                         .expect("failed to handle rpc message")
                     {
-                        tracing::warn!("pushing response to outbound queue: {response:#?}");
                         info.push_outbound(response).await;
+                        assert!(
+                            info.outbound_pending
+                                .load(std::sync::atomic::Ordering::Relaxed),
+                            "outbound should be pending"
+                        );
                     }
                 }
                 info.incoming_pending
@@ -197,7 +204,6 @@ impl RpcConnectionHandler {
         req: LspRequest,
         conn: &mut ConnectionInfo,
     ) -> MainResult<Option<LspMessage>> {
-        tracing::warn!("handle lsp message: {req:#?}");
         match Into::<lsp_server::Message>::into(req.msg) {
             lsp_server::Message::Request(req) => {
                 return handle_lsp_request(&self.state, req, conn);
@@ -215,6 +221,7 @@ impl RpcConnectionHandler {
 impl ConnectionInfo {
     /// pushes message to queue and marks outbound as having pending messages
     pub async fn push_outbound(&mut self, message: RpcMessage) {
+        tracing::warn!("pushing outbound: {message:#?}");
         self.outbound.write().await.push_back(message);
         if !self
             .outbound_pending
@@ -227,8 +234,6 @@ impl ConnectionInfo {
 }
 
 impl ConnectionThreadState {
-    const THREAD_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
-
     fn new(
         stream: TcpStream,
         incoming: SharedMessageQueue,
@@ -280,7 +285,6 @@ impl ConnectionThreadState {
                 thread_incoming_pending,
                 thread_outbound_pending,
             );
-
             loop {
                 tokio::select! {
                     Ok(_) = thread_state.read.readable() => {
@@ -298,9 +302,10 @@ impl ConnectionThreadState {
                             },
                         }
                     },
-                    Ok(_) = thread_state.write.writable() => {
-                        if thread_state.outbound_pending.load(std::sync::atomic::Ordering::Relaxed) {
-                            let mut w = thread_state.outbound.write().await;
+                    Ok(_) =  thread_state.write.writable() => {
+                        let pending = thread_state.outbound_pending.load(std::sync::atomic::Ordering::Relaxed);
+                        if pending {
+                            let mut w = thread_state.outbound.try_write().expect("failed to get write lock");
                             tracing::warn!("flushing outbound queue: {w:#?}");
                             while let Some(msg) = w.pop_front() {
                                 TcpPacket::async_write(&mut thread_state.write, &msg).await.expect("failed to write msg");
@@ -308,6 +313,9 @@ impl ConnectionThreadState {
                             thread_state.outbound_pending.store(false, std::sync::atomic::Ordering::Relaxed);
                         }
                     },
+                    else => {
+                        tracing::error!("not read or write ready within the given timeout");
+                    }
 
                 }
             }
@@ -327,7 +335,7 @@ impl ConnectionThreadState {
 
 /// I don't know why this end of the connection would ever receive responses
 fn handle_lsp_response(
-    state: &SharedState,
+    _state: &SharedState,
     _res: lsp_server::Response,
 ) -> MainResult<Option<LspMessage>> {
     Ok(None)
@@ -338,6 +346,7 @@ fn handle_lsp_request(
     req: lsp_server::Request,
     conn: &mut ConnectionInfo,
 ) -> MainResult<Option<LspMessage>> {
+    tracing::warn!("handle lsp req: {req:#?}");
     if let ConnectionType::Lsp {
         received_shutdown: true,
     } = conn.typ
@@ -432,6 +441,7 @@ fn handle_lsp_notification(
     state: &SharedState,
     noti: lsp_server::Notification,
 ) -> MainResult<Option<LspMessage>> {
+    tracing::warn!("handle lsp noti: {noti:#?}");
     match noti.method.as_str() {
         "textDocument/didChange" => {
             let mut w = state.try_write().expect("failed to get state write lock");
@@ -444,13 +454,88 @@ fn handle_lsp_notification(
             let mut w = state.try_write().expect("failed to get state write lock");
             let params =
                 serde_json::from_value::<lsp_types::DidSaveTextDocumentParams>(noti.params)?;
-            w.lsp_documents
-                .insert(params.text_document.uri, params.text.unwrap());
+            w.lsp_documents.insert(
+                params.text_document.uri.clone(),
+                params.text.clone().unwrap(),
+            );
+            let diagnostic = diagnose_document(params.text_document.uri, params.text.unwrap());
+            let params = serde_json::to_value(diagnostic).unwrap();
+            let msg = lsp_server::Message::Notification(lsp_server::Notification {
+                method: "textDocument/publishDiagnostics".to_string(),
+                params,
+            });
+            tracing::warn!("returning: {msg:#?}");
+            return Ok(Some(msg.into()));
         }
-        "textDocument/didOpen" => {}
+        "textDocument/didOpen" => {
+            let mut w = state.try_write().expect("failed to get state write lock");
+            let params =
+                serde_json::from_value::<lsp_types::DidOpenTextDocumentParams>(noti.params)?;
+            w.lsp_documents
+                .insert(params.text_document.uri, params.text_document.text);
+        }
         m => {
             tracing::warn!("unhandled notification: {m:#?}");
         }
     }
     Ok(None)
+}
+
+/// Currently just puts diagnostic on any 'word' that starts with a @
+fn diagnose_document(uri: lsp_types::Uri, str: String) -> lsp_types::PublishDiagnosticsParams {
+    let mut diagnostics = vec![];
+
+    let mut current_range = Option::<Range>::None;
+    let mut current_word = Option::<String>::None;
+    for (i, line) in str.lines().enumerate() {
+        for (k, ch) in line.char_indices() {
+            match (current_range, ch) {
+                (None, '@') => {
+                    let range = Range {
+                        start: Position {
+                            line: i as u32,
+                            character: k as u32,
+                        },
+                        end: Position {
+                            line: 0,
+                            character: 0,
+                        },
+                    };
+                    current_range = Some(range);
+                    match current_word {
+                        Some(ref mut w) => w.push(ch),
+                        None => current_word = Some(ch.to_string()),
+                    }
+                }
+                (Some(ref mut r), ch) => {
+                    if ch.is_whitespace() {
+                        r.end = Position {
+                            line: i as u32,
+                            character: k as u32,
+                        }
+                    } else {
+                        match current_word {
+                            Some(ref mut w) => w.push(ch),
+                            None => current_word = Some(ch.to_string()),
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if let Some(range) = current_range {
+            let diagnostic = lsp_types::Diagnostic {
+                range,
+                message: current_word.take().unwrap_or("no word?".to_string()),
+                ..Default::default()
+            };
+            diagnostics.push(diagnostic);
+        }
+    }
+    lsp_types::PublishDiagnosticsParams {
+        diagnostics,
+        uri,
+        version: None,
+    }
 }

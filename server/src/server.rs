@@ -1,19 +1,17 @@
-use knowls::rpc::{LspMessage, LspRequest, LspResponse, Request, RpcMessage};
+use knowls::rpc::{LspMessage, LspRequest, Request, RpcMessage};
 use lsp_server::RequestId;
+use lsp_types::{
+    CodeActionProviderCapability, DiagnosticServerCapabilities, InitializeParams,
+    ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+    TextDocumentSyncSaveOptions, WorkDoneProgressOptions,
+};
 use seraphic::{
     packet::{PacketRead, TcpPacket},
     RequestWrapper,
 };
 use tokio::{
-    io::AsyncWriteExt,
+    io::AsyncReadExt,
     net::{TcpStream, ToSocketAddrs},
-};
-
-use lsp_types::{
-    CodeActionProviderCapability, DiagnosticServerCapabilities, InitializeParams,
-    ServerCapabilities, ShowMessageParams, StaticTextDocumentRegistrationOptions,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
-    TextDocumentSyncSaveOptions, WorkDoneProgressOptions,
 };
 
 pub struct Server {
@@ -28,9 +26,9 @@ pub struct Server {
 }
 
 impl Server {
-    // 97 is a 122 is z
     fn lsp_id_chars(&self) -> String {
         let mut str = String::new();
+        // 97 is a 122 is z
         let first_letter = (((self.lsp_id / 25) + 97) as u8) as char;
         str.push(first_letter);
         if self.lsp_id > 25 {
@@ -60,19 +58,42 @@ impl Server {
 
     pub async fn main_loop(&mut self) -> super::MainResult<()> {
         while !self.should_exit {
-            if let Ok(msg) = self.lsp_connection.receiver.recv() {
-                tracing::warn!("recieved message from lsp: {msg:#?}");
-                self.handle_lsp_message(msg).await?;
-            }
-            if let Ok(_) = self.app_connection.readable().await {
-                match TcpPacket::async_read(&mut self.app_connection).await? {
-                    PacketRead::Empty => {}
-                    PacketRead::Disconnected => {
-                        tracing::warn!("disconnected from knowledge application");
-                        break;
-                    }
-                    PacketRead::Message(msg) => {
-                        self.handle_application_message(msg).await?;
+            match self.lsp_connection.receiver.try_recv() {
+                Ok(msg) => {
+                    tracing::warn!("received message from lsp: {msg:#?}");
+                    self.handle_lsp_message(msg).await?;
+                }
+                Err(err) if err.is_empty() => {}
+                Err(err) if err.is_disconnected() => {
+                    tracing::error!("Lsp Disconnected");
+                }
+                Err(err) => {
+                    tracing::error!("unexpected recv error: {err:#?}");
+                }
+            };
+            // tracing::warn!("reading from app connection");
+            if let Ok(result) = tokio::time::timeout(
+                std::time::Duration::from_millis(200),
+                TcpPacket::async_read(&mut self.app_connection),
+            )
+            .await
+            {
+                match result {
+                    Ok(read) => match read {
+                        PacketRead::Empty => {
+                            tracing::warn!("returned empty");
+                        }
+                        PacketRead::Disconnected => {
+                            tracing::warn!("disconnected from knowledge application");
+                            break;
+                        }
+                        PacketRead::Message(msg) => {
+                            tracing::warn!("received msg from application: {msg:#?}");
+                            self.handle_application_message(msg).await?;
+                        }
+                    },
+                    Err(e) => {
+                        tracing::error!("problem reading from app connection: {e:#?}");
                     }
                 }
             }
@@ -110,7 +131,6 @@ impl Server {
         match msg {
             knowls::rpc::RpcMessage::Res { id: _, res } => match res {
                 knowls::rpc::Response::Lsp(lsp_message) => {
-                    tracing::warn!("received lsp response from application: {lsp_message:#?}");
                     if let Some(shutdown_req_id) = self.shutdown_request_id.as_ref() {
                         let lsp_msg: &lsp_server::Message = lsp_message.msg.as_ref();
                         if let lsp_server::Message::Response(lsp_server::Response { id, .. }) =
@@ -123,9 +143,13 @@ impl Server {
                     }
                     self.lsp_connection.sender.send(lsp_message.msg.into())?;
                 }
-                _ => {}
+                _ => {
+                    tracing::warn!("no branch for {res:#?}");
+                }
             },
-            _ => {}
+            _ => {
+                tracing::warn!("no branch for {msg:#?}");
+            }
         }
         Ok(())
     }
