@@ -76,18 +76,12 @@ impl ConnectionType {
 
 impl RpcConnectionHandler {
     pub fn new(listener: TcpListener, state: SharedState) -> Self {
-        Self {
-            listener,
-            // connections: HashMap::new(),
-            state,
-        }
+        Self { listener, state }
     }
 
     pub async fn main_loop(&mut self, should_run: Arc<AtomicBool>) -> MainResult<()> {
-        tracing::warn!("starting rpc handler main loop");
         loop {
             let should_break = !should_run.load(std::sync::atomic::Ordering::Relaxed);
-            tracing::warn!("should break: {should_break}");
             if should_break {
                 tracing::warn!("breaking rpc handler main loop");
                 break;
@@ -100,15 +94,6 @@ impl RpcConnectionHandler {
                         w.connections.insert(addr.to_string(), conn);
                     },
                 else => {
-                    tracing::warn!("in else");
-                    self.state.write().await.connections.retain(|c, info| {
-                        if info.handle.is_finished() {
-                            tracing::warn!("dropping connection to: {c:#?}");
-                            false
-                        } else {
-                            true
-                        }
-                    });
                     let conns_to_handle =
                         self.state.read().await.connections.iter().fold(vec![], |mut acc, (addr, info)| {
                             if info
@@ -120,9 +105,16 @@ impl RpcConnectionHandler {
                             acc
                         });
                     self.manage_connections(conns_to_handle).await?;
+                    self.state.write().await.connections.retain(|c, info| {
+                        if info.handle.is_finished() {
+                            tracing::warn!("dropping connection to: {c:#?}");
+                            false
+                        } else {
+                            true
+                        }
+                    });
                 }
             }
-            tracing::warn!("out of loop");
         }
         Ok(())
     }
