@@ -45,7 +45,7 @@ pub struct ConnectionThreadState {
     incoming: SharedMessageQueue,
     incoming_pending: Arc<AtomicBool>,
     outbound: SharedMessageQueue,
-    outbound_pending: Arc<AtomicBool>,
+    // outbound_pending: Arc<AtomicBool>,
 }
 
 #[derive(Debug)]
@@ -56,7 +56,7 @@ pub(super) struct ConnectionInfo {
     pub incoming: SharedMessageQueue,
     pub incoming_pending: Arc<AtomicBool>,
     pub outbound: SharedMessageQueue,
-    pub outbound_pending: Arc<AtomicBool>,
+    // pub outbound_pending: Arc<AtomicBool>,
     pub typ: ConnectionType,
 }
 
@@ -154,11 +154,6 @@ impl RpcConnectionHandler {
                         .expect("failed to handle rpc message")
                     {
                         info.push_outbound(response).await;
-                        assert!(
-                            info.outbound_pending
-                                .load(std::sync::atomic::Ordering::Relaxed),
-                            "outbound should be pending"
-                        );
                     }
                 }
                 info.incoming_pending
@@ -223,13 +218,8 @@ impl ConnectionInfo {
     pub async fn push_outbound(&mut self, message: RpcMessage) {
         tracing::warn!("pushing outbound: {message:#?}");
         self.outbound.write().await.push_back(message);
-        if !self
-            .outbound_pending
-            .load(std::sync::atomic::Ordering::Relaxed)
-        {
-            self.outbound_pending
-                .store(true, std::sync::atomic::Ordering::Relaxed);
-        }
+        // self.outbound_pending
+        //     .store(true, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -248,19 +238,14 @@ impl ConnectionThreadState {
             incoming,
             incoming_pending,
             outbound,
-            outbound_pending,
+            // outbound_pending,
         }
     }
 
     async fn push_incoming(&mut self, message: RpcMessage) {
         self.incoming.write().await.push_back(message);
-        if !self
-            .incoming_pending
-            .load(std::sync::atomic::Ordering::Relaxed)
-        {
-            self.incoming_pending
-                .store(true, std::sync::atomic::Ordering::Relaxed);
-        }
+        self.incoming_pending
+            .store(true, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Spins up handle and returns connection info
@@ -302,15 +287,15 @@ impl ConnectionThreadState {
                             },
                         }
                     },
-                    Ok(_) =  thread_state.write.writable() => {
-                        let pending = thread_state.outbound_pending.load(std::sync::atomic::Ordering::Relaxed);
-                        if pending {
-                            let mut w = thread_state.outbound.try_write().expect("failed to get write lock");
-                            tracing::warn!("flushing outbound queue: {w:#?}");
+                    Ok(_) = thread_state.write.writable() => {
+                        // let pending = thread_state.outbound_pending.swap(false, std::sync::atomic::Ordering::Relaxed);
+                        let mut w = thread_state.outbound.try_write().expect("failed to get outbound write lock");
+                        if !w.is_empty() {
+                            tracing::warn!("flushing outbound queue");
                             while let Some(msg) = w.pop_front() {
+                                tracing::warn!("sending {msg:#?}");
                                 TcpPacket::async_write(&mut thread_state.write, &msg).await.expect("failed to write msg");
                             }
-                            thread_state.outbound_pending.store(false, std::sync::atomic::Ordering::Relaxed);
                         }
                     },
                     else => {
@@ -327,7 +312,7 @@ impl ConnectionThreadState {
             established,
             outbound,
             handle,
-            outbound_pending,
+            // outbound_pending,
             incoming_pending,
         }
     }
