@@ -6,8 +6,8 @@ use knowls::{
 };
 use lsp_server::ResponseError;
 use lsp_types::{
-    request::DocumentDiagnosticRequest, Hover, HoverParams, Position, PublishDiagnosticsParams,
-    Range,
+    request::DocumentDiagnosticRequest, DiagnosticSeverity, Hover, HoverParams, Position,
+    PublishDiagnosticsParams, Range,
 };
 use seraphic::{
     packet::{PacketRead, TcpPacket},
@@ -365,7 +365,9 @@ fn handle_lsp_request(
                     .nth(pos.line as usize)
                     .expect("should have gotten line");
                 let (char_before, char_after) = (
-                    line.chars().nth(pos.character as usize - 1),
+                    pos.character
+                        .checked_sub(1)
+                        .and_then(|i| line.chars().nth(i as usize)),
                     line.chars().nth(pos.character as usize),
                 );
 
@@ -509,8 +511,9 @@ fn diagnose_document(uri: lsp_types::Uri, str: String) -> lsp_types::PublishDiag
             }
         }
 
-        if let Some(range) = current_range {
+        if let Some(range) = current_range.take() {
             let diagnostic = lsp_types::Diagnostic {
+                severity: Some(DiagnosticSeverity::INFORMATION),
                 range,
                 message: current_word.take().unwrap_or("no word?".to_string()),
                 ..Default::default()
