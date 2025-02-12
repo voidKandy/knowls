@@ -11,7 +11,7 @@ use super::{
 use crate::{
     database::{models::Knowledge, Database, Record},
     rpc::{ConnectionInfo, RpcListener},
-    state::State,
+    state::{ConnectionInfoWrapper, State},
     tui::config::key_event_to_string,
 };
 use color_eyre::Result;
@@ -43,7 +43,7 @@ use tracing::{debug, info};
 
 pub struct RpcListenerContext {
     listener: RpcListener,
-    connections: Arc<RwLock<HashMap<String, ConnectionInfo>>>,
+    connections: Arc<RwLock<HashMap<String, ConnectionInfoWrapper>>>,
 }
 
 impl RpcListenerContext {
@@ -53,7 +53,7 @@ impl RpcListenerContext {
                 match self.listener.accept().await {
                     Ok((addr, conn)) => {
                         let mut w = self.connections.write().await;
-                        w.insert(addr.to_string(), conn);
+                        w.insert(addr.to_string(), conn.into());
                     }
                     Err(e) => {
                         // probably shouldn't panic
@@ -131,6 +131,7 @@ async fn mock_state(database: Database) -> State {
         database,
         knowledge,
         connections: Arc::new(RwLock::new(HashMap::new())),
+        lsp_documents: HashMap::new(),
     }
 }
 

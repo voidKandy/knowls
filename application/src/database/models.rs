@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{ops::Add, path::PathBuf, sync::LazyLock};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum KnowledgeId {
@@ -35,6 +35,18 @@ pub struct Knowledge {
     // pub id: Option<Thing>,
     pub kid: KnowledgeId,
     pub content: String,
+    /// maybe not the best thing to couple with the knowledge struct
+    pub lsp_char: char,
+}
+
+fn increment_and_return_char_counter() -> u8 {
+    static COUNTER: std::sync::OnceLock<std::sync::Mutex<u8>> = std::sync::OnceLock::new();
+    let mut mutex = COUNTER
+        .get_or_init(|| std::sync::Mutex::new(0))
+        .lock()
+        .unwrap();
+    *mutex = mutex.add(1);
+    *mutex
 }
 
 impl Knowledge {
@@ -44,10 +56,12 @@ impl Knowledge {
     // }
     // Eventually the content of knowledge should be built using the specific knowledge ID
     pub fn new(kid: impl Into<KnowledgeId>, content: impl ToString) -> Self {
+        let lsp_char = (increment_and_return_char_counter() + 96) as char;
         Self {
             // id: None,
             kid: kid.into(),
             content: content.to_string(),
+            lsp_char,
         }
     }
 }

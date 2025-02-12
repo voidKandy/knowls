@@ -38,6 +38,11 @@ pub struct LspMessage {
     pub msg: lsp_server::Message,
 }
 
+impl AsRef<lsp_server::Message> for LspMessage {
+    fn as_ref(&self) -> &lsp_server::Message {
+        &self.msg
+    }
+}
 impl From<lsp_server::Message> for LspMessage {
     fn from(msg: lsp_server::Message) -> Self {
         Self { msg }

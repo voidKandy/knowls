@@ -239,7 +239,7 @@ impl PageComponent for KnowledgeComponent {
                 self.cycle_knowledge(true);
             }
             _ if action.id == KnowledgeAction::MoveDown as u32 => {
-                self.cycle_knowledge(true);
+                self.cycle_knowledge(false);
             }
             _ if action.id == KnowledgeAction::ClosePopup as u32 && self.popup.is_some() => {
                 self.popup = None;
@@ -374,7 +374,12 @@ impl Component for KnowledgeComponent {
                     color = Color::LightMagenta;
                 }
 
-                ListItem::from(knowledge.kid.to_string()).bg(color)
+                ListItem::from(format!(
+                    "{} - {}",
+                    knowledge.kid.to_string(),
+                    knowledge.lsp_char
+                ))
+                .bg(color)
             })
             .collect();
 

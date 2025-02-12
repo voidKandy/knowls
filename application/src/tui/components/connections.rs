@@ -21,6 +21,8 @@ use ratatui::{
 struct ComponentConnectionInfo {
     pub addr: SocketAddr,
     pub established: Instant,
+    pub incoming: usize,
+    pub outbound: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -40,7 +42,20 @@ impl From<&State> for ConnectionsComponent {
                 .fold(vec![], |mut acc, (addr, info)| {
                     acc.push(ComponentConnectionInfo {
                         addr: SocketAddr::from_str(addr).unwrap(),
-                        established: info.established,
+                        incoming: info
+                            .info
+                            .incoming
+                            .try_read()
+                            .expect("could not read incoming queue")
+                            .len(),
+                        outbound: info
+                            .info
+                            .outbound
+                            .try_read()
+                            .expect("could not read incoming queue")
+                            .len(),
+
+                        established: info.info.established,
                     });
                     acc
                 }),
@@ -71,10 +86,14 @@ impl ConnectionsComponent {
             .title(format!("● {}", info.addr.to_string()))
             .title_style(Style::new().green());
 
-        let lines = vec![Line::raw(format!(
-            "Alive for: {} seconds",
-            info.established.elapsed().as_secs()
-        ))];
+        let lines = vec![
+            Line::raw(format!(
+                "Alive for: {} seconds",
+                info.established.elapsed().as_secs()
+            )),
+            Line::raw(format!("{} incoming", info.incoming)),
+            Line::raw(format!("{} outbound", info.outbound)),
+        ];
 
         Paragraph::new(lines).block(block).render(area, buf);
     }
@@ -97,7 +116,19 @@ impl Component for ConnectionsComponent {
                 .fold(vec![], |mut acc, (addr, info)| {
                     acc.push(ComponentConnectionInfo {
                         addr: SocketAddr::from_str(addr).unwrap(),
-                        established: info.established,
+                        established: info.info.established,
+                        incoming: info
+                            .info
+                            .incoming
+                            .try_read()
+                            .expect("could not read incoming queue")
+                            .len(),
+                        outbound: info
+                            .info
+                            .outbound
+                            .try_read()
+                            .expect("could not read incoming queue")
+                            .len(),
                     });
                     acc
                 });

@@ -1,4 +1,5 @@
-use knowls::rpc::{LspMessage, LspRequest, Request, RpcMessage};
+use knowls::rpc::{LspMessage, LspRequest, LspResponse, Request, RpcMessage};
+use lsp_server::RequestId;
 use seraphic::{
     packet::{PacketRead, TcpPacket},
     RequestWrapper,
@@ -16,11 +17,14 @@ use lsp_types::{
 };
 
 pub struct Server {
+    should_exit: bool,
     app_connection: TcpStream,
     lsp_connection: lsp_server::Connection,
     /// we need to generate IDs for every `Notification` that gets relayed
     /// up to two chars are generated from this number
     lsp_id: u16,
+    /// When this relays a shutdown request we need to know when to shutdown from a response from the application
+    shutdown_request_id: Option<RequestId>,
 }
 
 impl Server {
@@ -46,14 +50,16 @@ impl Server {
     pub async fn init(app_addr: impl ToSocketAddrs) -> super::MainResult<Self> {
         let app_connection = TcpStream::connect(app_addr).await?;
         Ok(Self {
+            should_exit: false,
             lsp_id: 0,
             app_connection,
             lsp_connection: init_lsp_connection(),
+            shutdown_request_id: None,
         })
     }
 
     pub async fn main_loop(&mut self) -> super::MainResult<()> {
-        loop {
+        while !self.should_exit {
             if let Ok(msg) = self.lsp_connection.receiver.recv() {
                 tracing::warn!("recieved message from lsp: {msg:#?}");
                 self.handle_lsp_message(msg).await?;
@@ -76,7 +82,13 @@ impl Server {
 
     async fn handle_lsp_message(&mut self, msg: lsp_server::Message) -> super::MainResult<()> {
         let (id, msg) = match msg {
-            lsp_server::Message::Request(ref req) => (req.id.to_string(), LspMessage::from(msg)),
+            lsp_server::Message::Request(ref req) => {
+                if req.method.as_str() == "shutdown" {
+                    tracing::warn!("received shutdown request: {req:#?}");
+                    self.shutdown_request_id = Some(req.id.to_owned());
+                }
+                (req.id.to_string(), LspMessage::from(msg))
+            }
             lsp_server::Message::Notification(ref _not) => {
                 let r = (self.lsp_id_chars(), LspMessage::from(msg));
                 self.increment_lsp_id();
@@ -85,6 +97,7 @@ impl Server {
             lsp_server::Message::Response(ref res) => (res.id.to_string(), LspMessage::from(msg)),
         };
         let req = Request::Lsp(LspRequest { msg });
+        tracing::warn!("relaying: {req:#?}");
         TcpPacket::<RpcMessage>::async_write(&mut self.app_connection, &req.into_message(id))
             .await?;
         Ok(())
@@ -95,8 +108,19 @@ impl Server {
         msg: knowls::rpc::RpcMessage,
     ) -> super::MainResult<()> {
         match msg {
-            seraphic::Message::Res { id, res } => match res {
+            knowls::rpc::RpcMessage::Res { id: _, res } => match res {
                 knowls::rpc::Response::Lsp(lsp_message) => {
+                    tracing::warn!("received lsp response from application: {lsp_message:#?}");
+                    if let Some(shutdown_req_id) = self.shutdown_request_id.as_ref() {
+                        let lsp_msg: &lsp_server::Message = lsp_message.msg.as_ref();
+                        if let lsp_server::Message::Response(lsp_server::Response { id, .. }) =
+                            lsp_msg
+                        {
+                            if *id == *shutdown_req_id {
+                                self.should_exit = false;
+                            }
+                        }
+                    }
                     self.lsp_connection.sender.send(lsp_message.msg.into())?;
                 }
                 _ => {}
@@ -128,7 +152,9 @@ fn init_lsp_connection() -> lsp_server::Connection {
         text_document_sync,
         completion_provider: Some(lsp_types::CompletionOptions {
             resolve_provider: Some(false),
-            trigger_characters: Some(vec!["?".to_string(), "\"".to_string(), " ".to_string()]),
+            trigger_characters:
+            // Some(vec!["?".to_string(), "\"".to_string(), " ".to_string()])
+            None,
             work_done_progress_options: WorkDoneProgressOptions {
                 work_done_progress: None,
             },

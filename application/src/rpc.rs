@@ -7,7 +7,7 @@ use std::{
     sync::{atomic::AtomicBool, Arc},
     time::{Duration, Instant},
 };
-use tokio::net::TcpListener;
+use tokio::{io::Interest, net::TcpListener};
 use tokio::{
     net::{
         tcp::{OwnedReadHalf, OwnedWriteHalf},
@@ -68,6 +68,7 @@ pub(super) struct ConnectionInfo {
 }
 
 impl ConnectionInfo {
+    /// pushes message to queue and marks outbound as having pending messages
     pub async fn push_outbound(&mut self, message: RpcMessage) {
         self.outbound.write().await.push_back(message);
         if !self
@@ -155,6 +156,7 @@ impl ConnectionThreadState {
                     Ok(_) = thread_state.write.writable() => {
                         if thread_state.outbound_pending.load(std::sync::atomic::Ordering::Relaxed) {
                             let mut w = thread_state.outbound.write().await;
+                            tracing::warn!("flushing outbound queue: {w:#?}");
                             while let Some(msg) = w.pop_front() {
                                 TcpPacket::async_write(&mut thread_state.write, &msg).await.expect("failed to write msg");
                             }
