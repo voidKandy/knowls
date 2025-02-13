@@ -19,8 +19,8 @@ use ratatui::{
 struct ComponentConnectionInfo {
     pub addr: SocketAddr,
     pub established: Instant,
-    pub incoming: usize,
-    pub outbound: usize,
+    // pub incoming: usize,
+    // pub outbound: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -38,17 +38,16 @@ impl From<&StateReadGuard<'_>> for ConnectionsComponent {
                 .fold(vec![], |mut acc, (addr, info)| {
                     acc.push(ComponentConnectionInfo {
                         addr: SocketAddr::from_str(addr).unwrap(),
-                        incoming: info
-                            .incoming
-                            .try_read()
-                            .expect("could not read incoming queue")
-                            .len(),
-                        outbound: info
-                            .outbound
-                            .try_read()
-                            .expect("could not read incoming queue")
-                            .len(),
-
+                        // incoming: info
+                        //     .incoming
+                        //     .try_read()
+                        //     .expect("could not read incoming queue")
+                        //     .len(),
+                        // outbound: info
+                        //     .outbound
+                        //     .try_read()
+                        //     .expect("could not read incoming queue")
+                        //     .len(),
                         established: info.established,
                     });
                     acc
@@ -85,8 +84,8 @@ impl ConnectionsComponent {
                 "Alive for: {} seconds",
                 info.established.elapsed().as_secs()
             )),
-            Line::raw(format!("{} incoming", info.incoming)),
-            Line::raw(format!("{} outbound", info.outbound)),
+            // Line::raw(format!("{} incoming", info.incoming)),
+            // Line::raw(format!("{} outbound", info.outbound)),
         ];
 
         Paragraph::new(lines).block(block).render(area, buf);
@@ -111,16 +110,16 @@ impl Component for ConnectionsComponent {
                 acc.push(ComponentConnectionInfo {
                     addr: SocketAddr::from_str(addr).unwrap(),
                     established: info.established,
-                    incoming: info
-                        .incoming
-                        .try_read()
-                        .expect("could not read incoming queue")
-                        .len(),
-                    outbound: info
-                        .outbound
-                        .try_read()
-                        .expect("could not read incoming queue")
-                        .len(),
+                    // incoming: info
+                    //     .incoming
+                    //     .try_read()
+                    //     .expect("could not read incoming queue")
+                    //     .len(),
+                    // outbound: info
+                    //     .outbound
+                    //     .try_read()
+                    //     .expect("could not read incoming queue")
+                    //     .len(),
                 });
                 acc
             });

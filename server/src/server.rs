@@ -132,6 +132,7 @@ impl Server {
             knowls::rpc::RpcMessage::Res { id: _, res } => match res {
                 knowls::rpc::Response::Lsp(lsp_message) => {
                     if let Some(shutdown_req_id) = self.shutdown_request_id.as_ref() {
+                        tracing::warn!("verifying shutdown response: {lsp_message:#?}");
                         let lsp_msg: &lsp_server::Message = lsp_message.msg.as_ref();
                         if let lsp_server::Message::Response(lsp_server::Response { id, .. }) =
                             lsp_msg

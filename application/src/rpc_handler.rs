@@ -34,17 +34,20 @@ use tokio::{
 pub struct RpcConnectionHandler {
     pub state: SharedState,
     pub listener: TcpListener,
+    // pub connections: HashMap<String, ConnectionInfo>,
 }
 
-type SharedMessageQueue = Arc<RwLock<VecDeque<RpcMessage>>>;
+type SharedMessageRecord = Arc<RwLock<Vec<RpcMessage>>>;
 #[derive(Debug)]
 /// Information of connection stored on connection handler thread
 pub struct ConnectionThreadState {
+    state: SharedState,
     read: OwnedReadHalf,
     write: OwnedWriteHalf,
-    incoming: SharedMessageQueue,
-    incoming_pending: Arc<AtomicBool>,
-    outbound: SharedMessageQueue,
+    messages: SharedMessageRecord,
+    // incoming: SharedMessageQueue,
+    // incoming_pending: Arc<AtomicBool>,
+    // outbound: SharedMessageQueue,
     // outbound_pending: Arc<AtomicBool>,
 }
 
@@ -53,11 +56,12 @@ pub struct ConnectionThreadState {
 pub(super) struct ConnectionInfo {
     pub handle: JoinHandle<()>,
     pub established: Instant,
-    pub incoming: SharedMessageQueue,
-    pub incoming_pending: Arc<AtomicBool>,
-    pub outbound: SharedMessageQueue,
+    pub messages: SharedMessageRecord,
+    // pub incoming: SharedMessageQueue,
+    // pub incoming_pending: Arc<AtomicBool>,
+    // pub outbound: SharedMessageQueue,
     // pub outbound_pending: Arc<AtomicBool>,
-    pub typ: ConnectionType,
+    // pub typ: ConnectionType,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -79,7 +83,11 @@ impl ConnectionType {
 
 impl RpcConnectionHandler {
     pub fn new(listener: TcpListener, state: SharedState) -> Self {
-        Self { listener, state }
+        Self {
+            listener,
+            state,
+            // connections: HashMap::new(),
+        }
     }
 
     pub async fn main_loop(&mut self, should_run: Arc<AtomicBool>) -> MainResult<()> {
@@ -90,234 +98,137 @@ impl RpcConnectionHandler {
                 break;
             }
 
-            tokio::select! {
-                Ok(Ok((stream, addr))) = tokio::time::timeout(Duration::from_millis(200), self.listener.accept()) => {
-                        let mut w = self.state.write().await;
-                        let conn =  ConnectionThreadState::spawn_handle(stream);
-                        w.connections.insert(addr.to_string(), conn);
-                    },
-                else => {
-                    let conns_to_handle =
-                        self.state.read().await.connections.iter().fold(vec![], |mut acc, (addr, info)| {
-                            if info
-                                .incoming_pending
-                                .load(std::sync::atomic::Ordering::Relaxed)
-                            {
-                                acc.push(addr.to_string())
-                            }
-                            acc
-                        });
-                    self.manage_connections(conns_to_handle).await?;
-                    self.state.write().await.connections.retain(|c, info| {
-                        if info.handle.is_finished() {
-                            tracing::warn!("dropping connection to: {c:#?}");
-                            false
-                        } else {
-                            true
-                        }
-                    });
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// Goes through given connection ids and handles pending RPC messages
-    async fn manage_connections(&mut self, conns_to_handle: Vec<String>) -> MainResult<()> {
-        if !conns_to_handle.is_empty() {
-            tracing::warn!(
-                "the following connection have unhandled messages: {conns_to_handle:#?}"
-            );
-
-            for addr in conns_to_handle {
-                tracing::warn!("handling messages for {addr:#?}");
-
-                let mut info = self
-                    .state
+            if let Ok(Ok((stream, addr))) =
+                tokio::time::timeout(Duration::from_millis(200), self.listener.accept()).await
+            {
+                let conn_info =
+                    ConnectionThreadState::spawn_handle(Arc::clone(&self.state), stream);
+                self.state
                     .write()
                     .await
                     .connections
-                    .remove(&addr)
-                    .expect("somehow got an invalid connection key?");
-
-                loop {
-                    let mut incoming_queue = info.incoming.write().await;
-                    let message = match incoming_queue.pop_front() {
-                        Some(msg) => msg,
-                        None => break,
-                    };
-                    drop(incoming_queue);
-
-                    if let Some(response) = self
-                        .handle_rpc_message(message, &mut info)
-                        .await
-                        .expect("failed to handle rpc message")
-                    {
-                        info.push_outbound(response).await;
+                    .insert(addr.to_string(), conn_info);
+            } else {
+                self.state.write().await.connections.retain(|c, info| {
+                    if info.handle.is_finished() {
+                        tracing::warn!("dropping connection to: {c:#?}");
+                        false
+                    } else {
+                        true
                     }
-                }
-                info.incoming_pending
-                    .store(false, std::sync::atomic::Ordering::Relaxed);
-
-                self.state.write().await.connections.insert(addr, info);
+                });
             }
         }
         Ok(())
-    }
-
-    async fn handle_rpc_message(
-        &mut self,
-        msg: RpcMessage,
-        conn: &mut ConnectionInfo,
-    ) -> MainResult<Option<RpcMessage>> {
-        tracing::warn!("handle rpc message: {msg:#?}");
-        match msg {
-            seraphic::Message::Req { id, req } => match req {
-                Request::Health(_) => {
-                    return Ok(Some(Response::from(HealthResponse {}).into_message(id)));
-                }
-                Request::Lsp(req) => {
-                    if let ConnectionType::Undefined = conn.typ {
-                        conn.typ.make_lsp();
-                    }
-                    if let Some(res_msg) = self.handle_lsp_req_message(req, conn)? {
-                        tracing::warn!("got response: {res_msg:#?}");
-                        return Ok(Some(
-                            Response::Lsp(knowls::rpc::LspResponse { msg: res_msg })
-                                .into_message(id),
-                        ));
-                    }
-                    return Ok(None);
-                }
-            },
-            _ => Err(other_err!("did not expect non req RpcMessage: {msg:#?}")),
-        }
-    }
-
-    fn handle_lsp_req_message(
-        &mut self,
-        req: LspRequest,
-        conn: &mut ConnectionInfo,
-    ) -> MainResult<Option<LspMessage>> {
-        match Into::<lsp_server::Message>::into(req.msg) {
-            lsp_server::Message::Request(req) => {
-                return handle_lsp_request(&self.state, req, conn);
-            }
-            lsp_server::Message::Response(res) => {
-                return handle_lsp_response(&self.state, res);
-            }
-            lsp_server::Message::Notification(noti) => {
-                return handle_lsp_notification(&self.state, noti);
-            }
-        }
-    }
-}
-
-impl ConnectionInfo {
-    /// pushes message to queue and marks outbound as having pending messages
-    pub async fn push_outbound(&mut self, message: RpcMessage) {
-        tracing::warn!("pushing outbound: {message:#?}");
-        self.outbound.write().await.push_back(message);
-        // self.outbound_pending
-        //     .store(true, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
 impl ConnectionThreadState {
-    fn new(
-        stream: TcpStream,
-        incoming: SharedMessageQueue,
-        outbound: SharedMessageQueue,
-        incoming_pending: Arc<AtomicBool>,
-        outbound_pending: Arc<AtomicBool>,
-    ) -> Self {
+    fn new(state: SharedState, stream: TcpStream) -> Self {
         let (read, write) = stream.into_split();
         Self {
+            state,
             read,
             write,
-            incoming,
-            incoming_pending,
-            outbound,
-            // outbound_pending,
+            messages: Arc::new(RwLock::new(vec![])),
         }
     }
 
-    async fn push_incoming(&mut self, message: RpcMessage) {
-        self.incoming.write().await.push_back(message);
-        self.incoming_pending
-            .store(true, std::sync::atomic::Ordering::Relaxed);
-    }
-
     /// Spins up handle and returns connection info
-    pub fn spawn_handle(stream: TcpStream) -> ConnectionInfo {
+    pub fn spawn_handle(state: SharedState, stream: TcpStream) -> ConnectionInfo {
         let established = Instant::now();
-        let incoming = Arc::new(RwLock::new(VecDeque::new()));
-        let outbound = Arc::new(RwLock::new(VecDeque::new()));
-        let incoming_pending = Arc::new(AtomicBool::new(false));
-        let outbound_pending = Arc::new(AtomicBool::new(false));
 
-        let thread_incoming = Arc::clone(&incoming);
-        let thread_outbound = Arc::clone(&outbound);
-        let thread_incoming_pending = Arc::clone(&incoming_pending);
-        let thread_outbound_pending = Arc::clone(&outbound_pending);
-
+        let mut thread_state = ConnectionThreadState::new(state, stream);
+        let messages = thread_state.messages.clone();
         let handle = tokio::spawn(async move {
             tracing::warn!("spawned connection handle");
-            let mut thread_state = ConnectionThreadState::new(
-                stream,
-                thread_incoming,
-                thread_outbound,
-                thread_incoming_pending,
-                thread_outbound_pending,
-            );
+            let mut received_shutdown = false;
             loop {
-                tokio::select! {
-                    Ok(_) = thread_state.read.readable() => {
-                        match TcpPacket::async_read(&mut thread_state.read).await {
-                            Err(err) => {
-                                panic!("connection thread encountered error when reading: {err:#?}");
-                            },
-                            Ok(PacketRead::Empty) =>{},
-                            Ok(PacketRead::Disconnected) =>{
-                                tracing::warn!("connection with client closed");
-                                break;
-                            },
-                            Ok(PacketRead::Message(msg)) =>{
-                                thread_state.push_incoming(msg).await;
-                            },
+                if let Ok(_) = thread_state.read.readable().await {
+                    match TcpPacket::async_read(&mut thread_state.read).await {
+                        Err(err) => {
+                            panic!("connection thread encountered error when reading: {err:#?}");
                         }
-                    },
-                    Ok(_) = thread_state.write.writable() => {
-                        // let pending = thread_state.outbound_pending.swap(false, std::sync::atomic::Ordering::Relaxed);
-                        let mut w = thread_state.outbound.try_write().expect("failed to get outbound write lock");
-                        if !w.is_empty() {
-                            tracing::warn!("flushing outbound queue");
-                            while let Some(msg) = w.pop_front() {
-                                tracing::warn!("sending {msg:#?}");
-                                TcpPacket::async_write(&mut thread_state.write, &msg).await.expect("failed to write msg");
+                        Ok(PacketRead::Empty) => {}
+                        Ok(PacketRead::Disconnected) => {
+                            tracing::warn!("connection with client closed");
+                            break;
+                        }
+                        Ok(PacketRead::Message(msg)) => {
+                            match handle_rpc_message(
+                                &thread_state.state,
+                                msg,
+                                &mut received_shutdown,
+                            )
+                            .await
+                            {
+                                Ok(res) => {
+                                    if let Some(msg) = res {
+                                        tracing::warn!("returning msg: {msg:#?}");
+                                        thread_state.write.writable().await;
+                                        TcpPacket::async_write(&mut thread_state.write, &msg)
+                                            .await
+                                            .expect("failed to write msg");
+                                    }
+                                }
+                                Err(e) => tracing::error!("error handling rpc message: {e:#?}"),
                             }
                         }
-                    },
-                    else => {
-                        tracing::error!("not read or write ready within the given timeout");
                     }
-
                 }
             }
         });
 
         ConnectionInfo {
-            typ: ConnectionType::Undefined,
-            incoming,
             established,
-            outbound,
             handle,
-            // outbound_pending,
-            incoming_pending,
+            messages,
         }
     }
 }
 
+async fn handle_rpc_message(
+    state: &SharedState,
+    msg: RpcMessage,
+    received_shutdown: &mut bool,
+) -> MainResult<Option<RpcMessage>> {
+    tracing::warn!("handle rpc message: {msg:#?}");
+    match msg {
+        seraphic::Message::Req { id, req } => match req {
+            Request::Health(_) => {
+                return Ok(Some(Response::from(HealthResponse {}).into_message(id)));
+            }
+            Request::Lsp(req) => {
+                if let Some(res_msg) = handle_lsp_req_message(state, req, received_shutdown)? {
+                    tracing::warn!("got response: {res_msg:#?}");
+                    return Ok(Some(
+                        Response::Lsp(knowls::rpc::LspResponse { msg: res_msg }).into_message(id),
+                    ));
+                }
+                return Ok(None);
+            }
+        },
+        _ => Err(other_err!("did not expect non req RpcMessage: {msg:#?}")),
+    }
+}
+
+fn handle_lsp_req_message(
+    state: &SharedState,
+    req: LspRequest,
+    received_shutdown: &mut bool,
+) -> MainResult<Option<LspMessage>> {
+    match Into::<lsp_server::Message>::into(req.msg) {
+        lsp_server::Message::Request(req) => {
+            return handle_lsp_request(state, req, received_shutdown);
+        }
+        lsp_server::Message::Response(res) => {
+            return handle_lsp_response(state, res);
+        }
+        lsp_server::Message::Notification(noti) => {
+            return handle_lsp_notification(state, noti);
+        }
+    }
+}
 /// I don't know why this end of the connection would ever receive responses
 fn handle_lsp_response(
     _state: &SharedState,
@@ -329,13 +240,10 @@ fn handle_lsp_response(
 fn handle_lsp_request(
     state: &SharedState,
     req: lsp_server::Request,
-    conn: &mut ConnectionInfo,
+    received_shutdown: &mut bool,
 ) -> MainResult<Option<LspMessage>> {
     tracing::warn!("handle lsp req: {req:#?}");
-    if let ConnectionType::Lsp {
-        received_shutdown: true,
-    } = conn.typ
-    {
+    if *received_shutdown {
         let response = lsp_server::Response {
             result: None,
             error: Some(ResponseError {
@@ -407,14 +315,7 @@ fn handle_lsp_request(
                 result: None,
                 error: None,
             };
-            if let ConnectionType::Lsp {
-                ref mut received_shutdown,
-            } = conn.typ
-            {
-                *received_shutdown = true;
-            } else {
-                panic!("non lsp connection handling lsp message");
-            }
+            *received_shutdown = true;
             return Ok(Some(lsp_server::Message::Response(response).into()));
         }
         m => {
