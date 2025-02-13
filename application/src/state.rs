@@ -13,7 +13,7 @@ pub type SharedState = Arc<RwLock<State>>;
 pub struct State {
     pub database: Database,
     pub knowledge: HashMap<RecordId, Knowledge>,
-    pub lsp_documents: HashMap<lsp_types::Uri, String>,
+    // pub lsp_documents: HashMap<lsp_types::Uri, String>,
     pub connections: HashMap<String, ConnectionInfo>,
 }
 
@@ -22,7 +22,7 @@ impl State {
         Self {
             database,
             knowledge: HashMap::new(),
-            lsp_documents: HashMap::new(),
+            // lsp_documents: HashMap::new(),
             connections: HashMap::new(),
         }
     }

@@ -375,11 +375,13 @@ impl Component for KnowledgeComponent {
                     color = Color::LightMagenta;
                 }
 
-                ListItem::from(format!(
-                    "{} - {}",
+                ListItem::from(
+                    // format!(
+                    // "{} - {}",
                     knowledge.kid.to_string(),
-                    knowledge.lsp_char
-                ))
+                    // knowledge.lsp_char
+                    // )
+                )
                 .bg(color)
             })
             .collect();

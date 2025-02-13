@@ -1,4 +1,5 @@
 mod database;
+mod lsp;
 mod rpc_handler;
 mod state;
 mod trace;
@@ -101,7 +102,7 @@ async fn mock_state(database: Database) -> State {
     State {
         database,
         knowledge,
-        lsp_documents: HashMap::new(),
+        // lsp_documents: HashMap::new(),
         connections: HashMap::new(),
     }
 }
