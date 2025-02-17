@@ -18,6 +18,7 @@ use knowls::MainResult;
 use rpc_handler::RpcConnectionHandler;
 use state::State;
 use tokio::{net::TcpListener, sync::RwLock, task::JoinHandle};
+use tui::config::Config;
 
 #[tokio::main]
 async fn main() {
@@ -27,6 +28,7 @@ async fn main() {
     tui::logging::init().unwrap();
 
     let args = tui::cli::Cli::parse();
+    let config = Config::new().expect("failed to get config");
 
     let database = Database::new(DatabaseConfig::default()).await.unwrap();
     let state = mock_state(database).await;
@@ -35,7 +37,11 @@ async fn main() {
     let tcp_listener = TcpListener::bind(args.rpc_addr)
         .await
         .expect("failed to bind listener");
-    let mut connection_handler = RpcConnectionHandler::new(tcp_listener, Arc::clone(&shared_state));
+    let mut connection_handler = RpcConnectionHandler::new(
+        config.completion_config.clone(),
+        tcp_listener,
+        Arc::clone(&shared_state),
+    );
 
     let should_run = Arc::new(AtomicBool::new(true));
     let handler_should_run = Arc::clone(&should_run);
@@ -46,27 +52,13 @@ async fn main() {
             .unwrap();
     });
 
-    let mut app = tui::App::new(shared_state, args.tick_rate, args.frame_rate)
+    let mut app = tui::App::new(config, shared_state, args.tick_rate, args.frame_rate)
         .await
         .unwrap();
     app.run().await.unwrap();
 
     should_run.store(false, std::sync::atomic::Ordering::Relaxed);
     join_handle.await.unwrap();
-    // color_eyre::install().expect("failed to prepare color_eyre");
-    // let terminal = ratatui::init();
-    // let database = Database::new(DatabaseConfig::default())
-    //     .await
-    //     .expect("failed to create database");
-    // let mut app = Application::new(database, "127.0.0.1:8778")
-    //     .await
-    //     .expect("failed to create app");
-    // let tui = app::tui::Tui::new(app.clone_state()).await;
-
-    // tokio::spawn(async move { app.main_loop().await });
-
-    // tui.run(terminal).expect("terminal failed");
-    // ratatui::restore();
 }
 
 async fn mock_state(database: Database) -> State {

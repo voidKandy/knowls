@@ -74,6 +74,7 @@ type Terminal = ratatui::Terminal<CrosstermBackend<std::io::Stdout>>;
 
 impl App {
     pub async fn new(
+        config: Config,
         state: SharedState,
         tick_rate: f64,
         frame_rate: f64,
@@ -106,7 +107,7 @@ impl App {
             state,
             should_quit: false,
             should_suspend: false,
-            config: Config::new()?,
+            config,
             mode: Mode::Normal,
             last_tick_key_events: Vec::new(),
             action_tx,

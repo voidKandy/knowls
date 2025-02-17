@@ -1,8 +1,4 @@
-use crate::{
-    database::models::{Knowledge, KnowledgeId},
-    state::{SharedState, StateReadGuard},
-};
-use color_eyre::owo_colors::OwoColorize;
+use crate::state::{SharedState, StateReadGuard};
 use knowls::{rpc::LspMessage, MainResult};
 use lsp_server::ResponseError;
 use lsp_types::{
@@ -10,11 +6,12 @@ use lsp_types::{
     CompletionTriggerKind, DiagnosticSeverity, Hover, HoverParams, Position, Range,
     TextDocumentPositionParams,
 };
-use std::{collections::HashMap, marker::PhantomData};
-use surrealdb::RecordId;
+use std::collections::HashMap;
+pub mod completions;
 
 #[derive(Debug)]
 pub struct LspHandler {
+    completion_config: completions::CompletionConfig,
     /// not ideal that this requires cloning
     // knowledge_context: HashMap<RecordId, Knowledge>,
     pub documents: HashMap<lsp_types::Uri, String>,
@@ -22,8 +19,9 @@ pub struct LspHandler {
 }
 
 impl LspHandler {
-    pub fn new() -> Self {
+    pub fn new(completion_config: completions::CompletionConfig) -> Self {
         Self {
+            completion_config,
             // knowledge_context: r.knowledge.
             documents: HashMap::new(),
             received_shutdown: false,
@@ -228,17 +226,20 @@ impl LspHandler {
             .values()
             .map(|k| k.kid.to_string())
             .collect::<Vec<String>>();
-        // this should be configurable
-        let trigger_characters = "@@$";
         let doc = self.documents.get(&position_params.text_document.uri)?;
         let line = doc.lines().nth(position_params.position.line as usize)?;
-        if let Some(pos) = line.find(trigger_characters) {
-            let first_char_pos = pos + trigger_characters.len();
-            let slice_between_trigger_and_cursor = line
-                .chars()
-                .skip(first_char_pos)
-                .take(position_params.position.character as usize - first_char_pos)
-                .collect::<String>();
+        if let Some(pos) = line.find(&self.completion_config.prefix) {
+            let first_char_pos = pos + self.completion_config.prefix.len();
+            let slice_between_trigger_and_cursor = {
+                let iterator = line.chars().skip(first_char_pos);
+                if let Some(take) =
+                    (position_params.position.character as usize).checked_sub(first_char_pos)
+                {
+                    iterator.take(take).collect::<String>()
+                } else {
+                    iterator.collect::<String>()
+                }
+            };
 
             tracing::warn!("seeing which values start with: {slice_between_trigger_and_cursor}");
 

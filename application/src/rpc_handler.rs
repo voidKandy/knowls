@@ -1,5 +1,5 @@
 use crate::{
-    lsp::LspHandler,
+    lsp::{completions::CompletionConfig, LspHandler},
     state::{SharedState, State, StateReadGuard},
 };
 use knowls::{
@@ -37,6 +37,7 @@ use tokio::{
 
 #[derive(Debug)]
 pub struct RpcConnectionHandler {
+    pub completion_config: CompletionConfig,
     pub state: SharedState,
     pub listener: TcpListener,
     // pub connections: HashMap<String, ConnectionInfo>,
@@ -89,8 +90,13 @@ impl ConnectionType {
 }
 
 impl RpcConnectionHandler {
-    pub fn new(listener: TcpListener, state: SharedState) -> Self {
+    pub fn new(
+        completion_config: CompletionConfig,
+        listener: TcpListener,
+        state: SharedState,
+    ) -> Self {
         Self {
+            completion_config,
             listener,
             state,
             // connections: HashMap::new(),
@@ -108,8 +114,11 @@ impl RpcConnectionHandler {
             if let Ok(Ok((stream, addr))) =
                 tokio::time::timeout(Duration::from_millis(200), self.listener.accept()).await
             {
-                let conn_info =
-                    ConnectionThreadState::spawn_handle(Arc::clone(&self.state), stream);
+                let conn_info = ConnectionThreadState::spawn_handle(
+                    self.completion_config.clone(),
+                    Arc::clone(&self.state),
+                    stream,
+                );
                 self.state
                     .write()
                     .await
@@ -131,10 +140,10 @@ impl RpcConnectionHandler {
 }
 
 impl ConnectionThreadState {
-    fn new(state: SharedState, stream: TcpStream) -> Self {
+    fn new(completion_config: CompletionConfig, state: SharedState, stream: TcpStream) -> Self {
         let (read, write) = stream.into_split();
         let r = state.try_read().unwrap();
-        let lsp_handler = LspHandler::new();
+        let lsp_handler = LspHandler::new(completion_config);
         drop(r);
         Self {
             lsp_handler,
@@ -146,10 +155,14 @@ impl ConnectionThreadState {
     }
 
     /// Spins up handle and returns connection info
-    pub fn spawn_handle(state: SharedState, stream: TcpStream) -> ConnectionInfo {
+    pub fn spawn_handle(
+        config: CompletionConfig,
+        state: SharedState,
+        stream: TcpStream,
+    ) -> ConnectionInfo {
         let established = Instant::now();
 
-        let mut thread_state = ConnectionThreadState::new(state, stream);
+        let mut thread_state = ConnectionThreadState::new(config, state, stream);
         let messages = thread_state.messages.clone();
         let handle = tokio::spawn(async move {
             tracing::warn!("spawned connection handle");

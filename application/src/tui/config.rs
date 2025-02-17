@@ -8,6 +8,8 @@ use ratatui::style::{Color, Modifier, Style};
 use serde::{de::Deserializer, Deserialize};
 use tracing::error;
 
+use crate::lsp::completions::CompletionConfig;
+
 use super::{
     action::Action,
     app::Mode,
@@ -27,7 +29,9 @@ pub struct AppConfig {
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Config {
     #[serde(default, flatten)]
-    pub config: AppConfig,
+    pub app_config: AppConfig,
+    #[serde(default, rename = "completions")]
+    pub completion_config: CompletionConfig,
     #[serde(default)]
     pub keybindings: KeyBindings,
     #[serde(default)]

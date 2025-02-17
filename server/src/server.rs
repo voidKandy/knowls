@@ -177,7 +177,7 @@ fn init_lsp_connection() -> lsp_server::Connection {
         text_document_sync,
         completion_provider: Some(lsp_types::CompletionOptions {
             resolve_provider: Some(false),
-            trigger_characters: Some(vec!["@@$".to_string()]),
+            trigger_characters: None,
             work_done_progress_options: WorkDoneProgressOptions {
                 work_done_progress: None,
             },
