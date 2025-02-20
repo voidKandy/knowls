@@ -1,4 +1,7 @@
-use crate::state::{SharedState, StateReadGuard};
+use crate::{
+    database::models::KnowledgeId,
+    state::{SharedState, StateReadGuard},
+};
 use knowls::{rpc::LspMessage, MainResult};
 use lsp_server::ResponseError;
 use lsp_types::{
@@ -72,40 +75,68 @@ impl LspHandler {
                         .lines()
                         .nth(pos.line as usize)
                         .expect("should have gotten line");
-                    let (char_before, char_after) = (
-                        pos.character
-                            .checked_sub(1)
-                            .and_then(|i| line.chars().nth(i as usize)),
-                        line.chars().nth(pos.character as usize),
-                    );
+                    let all_possible_hover_values: HashMap<String, &KnowledgeId> = r
+                        .knowledge
+                        .values()
+                        .map(|k| {
+                            (
+                                format!("{}{}", self.completion_config.prefix, k.kid.to_string()),
+                                &k.kid,
+                            )
+                        })
+                        .collect();
 
-                    // match (char_before, char_after) {
-                    //     (Some(bc), Some(ac)) => {
-                    //         if bc == '@' {
-                    //             if let Some(kn) = r.knowledge.values().find(|k| k.lsp_char == ac) {
-                    //                 let hover = Hover {
-                    //                     contents: lsp_types::HoverContents::Markup(
-                    //                         lsp_types::MarkupContent {
-                    //                             kind: lsp_types::MarkupKind::Markdown,
-                    //                             value: kn.content.to_owned(),
-                    //                         },
-                    //                     ),
-                    //                     range: None,
-                    //                 };
+                    // we get the word we are hovering over
+                    let idx_first_whitespace_before_cursor = line
+                        .char_indices()
+                        .take(params.text_document_position_params.position.character as usize)
+                        .collect::<Vec<(usize, char)>>()
+                        .into_iter()
+                        .rev()
+                        .find_map(|(i, ch)| if ch.is_whitespace() { Some(i) } else { None })
+                        .unwrap_or(0);
 
-                    //                 let json = serde_json::to_value(hover)
-                    //                     .expect("could not serialize hover");
-                    //                 let msg = lsp_server::Message::Response(lsp_server::Response {
-                    //                     id: req.id,
-                    //                     result: Some(json),
-                    //                     error: None,
-                    //                 });
-                    //                 return Ok(Some(msg.into()));
-                    //             }
-                    //         }
-                    //     }
-                    //     _ => {}
-                    // }
+                    let idx_first_whitespace_after_cursor = line
+                        .char_indices()
+                        .skip(params.text_document_position_params.position.character as usize)
+                        .find_map(|(i, ch)| if ch.is_whitespace() { Some(i) } else { None })
+                        .unwrap_or(line.len());
+
+                    let word_under_cursor = line
+                        .chars()
+                        .skip(idx_first_whitespace_before_cursor)
+                        .take(
+                            idx_first_whitespace_after_cursor - idx_first_whitespace_before_cursor,
+                        )
+                        .collect::<String>();
+
+                    tracing::warn!("WORD UNDER CURSOR: {word_under_cursor}");
+
+                    if let Some(kid) = all_possible_hover_values.get(&word_under_cursor) {
+                        // this is a little funky
+                        let hover_content: &str = &r
+                            .knowledge
+                            .values()
+                            .find(|k| &k.kid == *kid)
+                            .expect("Should be knowledge?")
+                            .content;
+
+                        let hover = Hover {
+                            contents: lsp_types::HoverContents::Markup(lsp_types::MarkupContent {
+                                kind: lsp_types::MarkupKind::Markdown,
+                                value: hover_content.to_string(),
+                            }),
+                            range: None,
+                        };
+
+                        let json = serde_json::to_value(hover).expect("could not serialize hover");
+                        let msg = lsp_server::Message::Response(lsp_server::Response {
+                            id: req.id,
+                            result: Some(json),
+                            error: None,
+                        });
+                        return Ok(Some(msg.into()));
+                    }
                 }
                 return Ok(None);
             }

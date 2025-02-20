@@ -1,8 +1,5 @@
-use std::collections::HashMap;
-
 use super::Component;
 use super::{super::action::Action, ComponentId};
-use crate::state::State;
 use crate::tui::app::Mode;
 use crate::tui::components::PageComponentAction;
 use crate::tui::config::{key_event_to_string, Config};
@@ -12,9 +9,7 @@ use ratatui::layout::{Constraint, Layout};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Style, Stylize},
-    text::Text,
-    widgets::{Block, Borders, Clear, Paragraph, Widget, Wrap},
+    widgets::{Block, Clear, Paragraph, Widget},
     Frame,
 };
 use tokio::sync::mpsc::UnboundedSender;
@@ -54,11 +49,6 @@ impl Widget for HelpPopup<'_> {
         let chunks = Layout::vertical(constraints)
             .flex(ratatui::layout::Flex::SpaceBetween)
             .split(area);
-        // let block = Block::new()
-        //     .title("Keybinds")
-        //     .title_style(Style::new().yellow())
-        //     .borders(Borders::ALL)
-        //     .border_style(Style::new().red());
 
         self.action_keybinds.render(chunks[0], buf);
         if let Some(paragraph) = self.component_action_keybinds {

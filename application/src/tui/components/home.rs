@@ -66,7 +66,18 @@ impl Component for Home {
     }
 
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()> {
-        frame.render_widget(Paragraph::new("Welcome to KnowLS"), area);
+        let [header, body] =
+            Layout::vertical([Constraint::Percentage(5), Constraint::Percentage(95)]).areas(area);
+        frame.render_widget(
+            Paragraph::new(format!(
+                "Completion Prefix - {}",
+                self.config.completion_config.prefix
+            ))
+            .style(Style::new().yellow())
+            .bold(),
+            header,
+        );
+        frame.render_widget(Paragraph::new("Welcome to KnowLS"), body);
         Ok(())
     }
 }
