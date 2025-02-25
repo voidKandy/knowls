@@ -1,6 +1,5 @@
 use std::io::{self, Read};
 
-// @_Hello
 fn main() {
     let mut raw = String::new();
     io::stdin()
@@ -9,7 +8,6 @@ fn main() {
     println!("{raw}");
 }
 
-// %s
 struct ToBePushed {
     x: u32,
 }

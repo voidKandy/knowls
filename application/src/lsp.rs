@@ -1,16 +1,18 @@
 use crate::{
-    database::models::KnowledgeId,
+    database::models::{Knowledge, KnowledgeId},
     state::{SharedState, StateReadGuard},
 };
-use knowls::{rpc::LspMessage, MainResult};
+use definition::knowledge_document;
+use knowls::{other_err, rpc::LspMessage, MainResult};
 use lsp_server::ResponseError;
 use lsp_types::{
     CompletionContext, CompletionItem, CompletionItemKind, CompletionParams, CompletionResponse,
-    CompletionTriggerKind, DiagnosticSeverity, Hover, HoverParams, Position, Range,
-    TextDocumentPositionParams,
+    CompletionTriggerKind, DiagnosticSeverity, GotoDefinitionResponse, Hover, HoverParams,
+    Position, Range, TextDocumentPositionParams,
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 pub mod completions;
+mod definition;
 
 #[derive(Debug)]
 pub struct LspHandler {
@@ -61,8 +63,8 @@ impl LspHandler {
         }
 
         match req.method.as_str() {
-            "textDocument/definition" => {}
-            "textDocument/hover" => {
+            m @ "textDocument/definition" | m @ "textDocument/hover" => {
+                let is_hover = m == "textDocument/hover";
                 let r = state.try_read().expect("failed to read lock state");
                 let params = serde_json::from_value::<HoverParams>(req.params)?;
                 let pos = params.text_document_position_params.position;
@@ -113,29 +115,82 @@ impl LspHandler {
                     tracing::warn!("WORD UNDER CURSOR: {word_under_cursor}");
 
                     if let Some(kid) = all_possible_hover_values.get(&word_under_cursor) {
-                        // this is a little funky
-                        let hover_content: &str = &r
-                            .knowledge
-                            .values()
-                            .find(|k| &k.kid == *kid)
-                            .expect("Should be knowledge?")
-                            .content;
+                        if is_hover {
+                            // this is a little funky
+                            let hover_content: &str = &r
+                                .knowledge
+                                .values()
+                                .find(|k| &k.kid == *kid)
+                                .expect("Should be knowledge?")
+                                .content;
 
-                        let hover = Hover {
-                            contents: lsp_types::HoverContents::Markup(lsp_types::MarkupContent {
-                                kind: lsp_types::MarkupKind::Markdown,
-                                value: hover_content.to_string(),
-                            }),
-                            range: None,
-                        };
+                            let hover = Hover {
+                                contents: lsp_types::HoverContents::Markup(
+                                    lsp_types::MarkupContent {
+                                        kind: lsp_types::MarkupKind::Markdown,
+                                        value: hover_content.to_string(),
+                                    },
+                                ),
+                                range: None,
+                            };
 
-                        let json = serde_json::to_value(hover).expect("could not serialize hover");
-                        let msg = lsp_server::Message::Response(lsp_server::Response {
-                            id: req.id,
-                            result: Some(json),
-                            error: None,
-                        });
-                        return Ok(Some(msg.into()));
+                            let json =
+                                serde_json::to_value(hover).expect("could not serialize hover");
+                            let msg = lsp_server::Message::Response(lsp_server::Response {
+                                id: req.id,
+                                result: Some(json),
+                                error: None,
+                            });
+                            return Ok(Some(msg.into()));
+                        } else {
+                            let response_result: MainResult<GotoDefinitionResponse> = {
+                                let k: &Knowledge = r
+                                    .knowledge
+                                    .values()
+                                    .find(|k| &k.kid == *kid)
+                                    .ok_or(other_err!("Should be knowledge?"))?;
+                                let path = knowledge_document(k)?;
+                                // very important that we add `file://` to the beginning of our file uris so the lsp
+                                // client knows what to do with the goto definition response
+                                let uri = lsp_types::Uri::from_str(&format!(
+                                    "file://{}",
+                                    &path
+                                        .to_str()
+                                        .expect("could not get str from path")
+                                        .replace(" ", "%20"),
+                                ))
+                                .expect("could not get URI from path");
+                                let end = lsp_types::Position {
+                                    line: k.content.lines().count() as u32 - 1,
+                                    character: k
+                                        .content
+                                        .lines()
+                                        .last()
+                                        .and_then(|l| Some(l.chars().count() as u32))
+                                        .unwrap_or(0),
+                                };
+                                let location = lsp_types::Location {
+                                    uri,
+                                    range: Range::new(
+                                        Position {
+                                            line: 0,
+                                            character: 0,
+                                        },
+                                        end,
+                                    ),
+                                };
+
+                                let response = GotoDefinitionResponse::Array(vec![location]);
+
+                                let json = serde_json::to_value(response)?;
+                                let msg = lsp_server::Message::Response(lsp_server::Response {
+                                    id: req.id,
+                                    result: Some(json),
+                                    error: None,
+                                });
+                                return Ok(Some(msg.into()));
+                            };
+                        }
                     }
                 }
                 return Ok(None);
