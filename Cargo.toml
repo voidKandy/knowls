@@ -1,58 +1,51 @@
 [package]
-name = "espx_lsp_server"
+name = "knowls"
 version = "0.1.0"
 edition = "2021"
-
+ 
 [lib]
 path="src/lib.rs"
 
-[[bin]]
-name = "tui"
-path = "bin/tui.rs"
-
-[[bin]]
-name = "server"
-path = "bin/server.rs"
-
-
-[[bin]]
-name = "relay"
-path = "bin/relay.rs"
-
-[features]
-default = []
-tui = ["dep:ratatui", "dep:color-eyre", "dep:throbber-widgets-tui", "dep:crossterm"]
-
+[workspace]
+members = [
+    # The LSP server that actually attaches to IDE
+    "server",
+    # The application running that hosts the knowledge
+    "application",
+]
 
 [dependencies]
-clap = {version = "4.5.7", features = ["derive", "env"] }
+seraphic = {workspace=true}
+serde = {workspace=true}
+serde_json = {workspace=true}
+lsp-server = {workspace=true}
+lsp-types = {workspace=true}
+
+[workspace.dependencies]
+clap = {version = "4.5.7", features = [
+    "derive",
+    "cargo",
+    "wrap_help",
+    "unicode",
+    "string",
+    "unstable-styles",
+]}
 tracing = { version = "0.1.40", features = ["log"] }
 tracing-bunyan-formatter = "0.3.9"
+lsp-server = "0.7.6"
+lsp-types = "0.97.0"
 tracing-log = "0.2.0"
 tracing-subscriber = { version = "0.3.18", features = ["registry", "env-filter"] }
-
-# espionox = "0.1.40"
-espionox = {path = "../espionox"}
-
-
 tokio = { version = "1.28.2", features = ["full"] }
 dotenv = "0.15.0"
 crossbeam-channel = "0.5.11"
-surrealdb = {version = "2.0.2", features=['kv-rocksdb', 'kv-mem', 'protocol-http']}
 toml = "0.8.12"
 thiserror = "1.0.58"
 futures = "0.3.30"
-lsp-types = "0.97.0"
-lsp-server = "0.7.6"
 serde_json = "1.0.117"
-serde = "1.0.203"
+serde = { version = "1.0.203" , features=["derive"] }
 base64 = "0.22.1"
 fastembed = "4.3.0"
-
-ratatui = { version = "0.29.0", features = ["crossterm"] , optional=true }
-color-eyre = { version = "0.6.3", optional=true }
-crossterm = { version = "0.28.1", features = ["event-stream"] , optional=true }
-throbber-widgets-tui = { version = "0.8.0" , optional=true }
 seraphic = "0.1.55"
 
 [profile.test]

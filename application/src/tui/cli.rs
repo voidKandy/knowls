@@ -1,0 +1,48 @@
+use clap::Parser;
+
+use super::config::{get_config_dir, get_data_dir};
+
+#[derive(Parser, Debug)]
+#[command(author, version = version(), about)]
+pub struct Cli {
+    /// Whether or not the tui should run
+    #[arg(short, long, value_name = "BOOL", default_value_t = true)]
+    pub run_tui: bool,
+    /// Tick rate, i.e. number of ticks per second
+    #[arg(short, long, value_name = "FLOAT", default_value_t = 4.0)]
+    pub tick_rate: f64,
+
+    /// Frame rate, i.e. number of frames per second
+    #[arg(short, long, value_name = "FLOAT", default_value_t = 60.0)]
+    pub frame_rate: f64,
+
+    #[arg(short='a', long, value_name = "ADDR", default_value_t =String::from("127.0.0.1:8888"))]
+    pub rpc_addr: String,
+}
+
+const VERSION_MESSAGE: &str = concat!(
+    env!("CARGO_PKG_VERSION"),
+    "-",
+    // env!("VERGEN_GIT_DESCRIBE"),
+    // " (",
+    // env!("VERGEN_BUILD_DATE"),
+    // ")"
+);
+
+pub fn version() -> String {
+    let author = clap::crate_authors!();
+
+    // let current_exe_path = PathBuf::from(clap::crate_name!()).display().to_string();
+    let config_dir_path = get_config_dir().display().to_string();
+    let data_dir_path = get_data_dir().display().to_string();
+
+    format!(
+        "\
+{VERSION_MESSAGE}
+
+Authors: {author}
+
+Config directory: {config_dir_path}
+Data directory: {data_dir_path}"
+    )
+}
